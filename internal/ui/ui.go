@@ -1355,11 +1355,18 @@ func buildCommandsTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind bindin
 			}()
 		}, w)
 	})
+	btnStartShizuku := widget.NewButton("Start Shizuku", func() {
+		go func() {
+			out, err := mgr.StartShizuku(mustGet(selectedSerialBind))
+			showCmdResult("Start Shizuku", out, err, w)
+		}()
+	})
 
 	return container.NewVBox(
 		widget.NewLabelWithStyle("ADB Commands", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		container.NewHBox(btnReboot, btnRebootBootloader, btnRebootRecovery),
 		container.NewHBox(btnSideload, fileSideload),
+		btnStartShizuku,
 	)
 }
 

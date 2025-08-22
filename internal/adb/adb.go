@@ -126,6 +126,11 @@ func (m *Manager) Sideload(serial, path string) (string, error) {
 	return m.ExecSerial(serial, "sideload", path)
 }
 
+// StartShizuku executes the Shizuku start script.
+func (m *Manager) StartShizuku(serial string) (string, error) {
+	return m.ExecSerial(serial, "shell", "sh", "/sdcard/Android/data/moe.shizuku.privileged.api/start.sh")
+}
+
 func parseFastbootDevices(output string) []Device {
 	var devices []Device
 	lines := strings.Split(output, "\n")
@@ -408,7 +413,8 @@ func (m *Manager) GetVarAll(serial string) (map[string]string, string, error) {
 	}
 	return vars, out, nil
 }
-	// InstalledPackagesForUser returns installed package names for a specific user.
+
+// InstalledPackagesForUser returns installed package names for a specific user.
 func (m *Manager) InstalledPackagesForUser(serial string, userID int) ([]string, string, error) {
 	m.EnsureServer()
 	args := []string{"shell", "cmd", "package", "list", "packages", "--user", strconv.Itoa(userID)}
@@ -566,7 +572,8 @@ func (m *Manager) ExtractApk(serial, pkg, destDir string) (string, error) {
 	}
 	return strings.Join(allOut, "\n"), err
 }
- // Reboot reboots the device (mode can be "", "recovery", "bootloader").
+
+// Reboot reboots the device (mode can be "", "recovery", "bootloader").
 func (m *Manager) Reboot(serial, mode string) (string, error) {
 	args := []string{}
 	if mode == "" {
@@ -723,6 +730,7 @@ func ValidatePath(p string) (string, error) {
 	}
 	return p, nil
 }
+
 // --- Added raw exec helpers, push/pull utilities, and app-data extraction ---
 
 // ExecRaw runs adb and returns raw bytes (suitable for binary streams like exec-out tar).
