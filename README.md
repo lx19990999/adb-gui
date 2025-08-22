@@ -4,9 +4,12 @@ A cross-platform GUI application for Android Debug Bridge (ADB) built with Go an
 
 ## Prerequisites
 
-- Go 1.16 or later
-- A C compiler (like GCC or Clang for Linux/macOS, or TDM-GCC/MinGW for Windows)
-- Android ADB and Fastboot tools installed and available in your system's PATH.
+- **Go:** Version 1.16 or later.
+- **C Compiler:** Fyne requires a C compiler for building.
+  - **Windows:** MSYS2 with MinGW 64-bit is required. Follow the setup guide on the [Fyne website](https://docs.fyne.io/started/).
+  - **macOS:** Xcode Command Line Tools.
+  - **Linux:** GCC or Clang.
+- **Android Tools:** ADB and Fastboot must be installed and available in your system's PATH.
 
 ## Getting Started
 
@@ -17,12 +20,13 @@ A cross-platform GUI application for Android Debug Bridge (ADB) built with Go an
     ```
 
 2.  **Install Fyne dependencies:**
-    This is required for building Fyne applications.
+    This command installs the Fyne CLI tool, which is helpful for managing Fyne projects.
     ```sh
     go install fyne.io/fyne/v2/cmd/fyne@latest
     ```
 
 3.  **Tidy the Go modules:**
+    This downloads the necessary Go packages for the project.
     ```sh
     go mod tidy
     ```
@@ -34,7 +38,7 @@ Below are the platform-specific instructions for building and running the applic
 ### Windows
 
 1.  **Build the application:**
-    Open a Command Prompt or PowerShell window and run:
+    Ensure your MSYS2 MinGW 64-bit environment is correctly configured. Open a Command Prompt or PowerShell window and run:
     ```cmd
     go build -o adb-gui.exe ./cmd/adb-gui
     ```
