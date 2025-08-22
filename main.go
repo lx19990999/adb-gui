@@ -22,8 +22,8 @@ func main() {
 	// Ensure adb server is running to avoid empty device lists on first call
 	mgr.EnsureServer()
 
-	// Start GUI
-	a := app.NewWithID("adb-gui")
+	// Start GUI. The App ID must be set here for the fyne tool to work correctly.
+	a := app.NewWithID("io.github.lx19990999.adb-gui")
 
 	// Apply theme from config (system by default)
 	ui.ApplyThemeMode(cfg.ThemeMode)

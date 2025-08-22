@@ -8,7 +8,7 @@ A cross-platform GUI application for Android Debug Bridge (ADB) built with Go an
 - **C Compiler:** Fyne requires a C compiler for building.
   - **Windows:** MSYS2 with MinGW 64-bit is required. Follow the setup guide on the [Fyne website](https://docs.fyne.io/started/).
   - **macOS:** Xcode Command Line Tools.
-  - **Linux:** GCC or Clang.
+  - **Linux:** GCC or Clang. For creating `.deb` or `.rpm` packages, you will also need the appropriate packaging tools (`dpkg-deb`, `rpmbuild`).
 - **Android Tools:** ADB and Fastboot must be installed and available in your system's PATH.
 
 ## Getting Started
@@ -19,64 +19,44 @@ A cross-platform GUI application for Android Debug Bridge (ADB) built with Go an
     cd adb-gui
     ```
 
-2.  **Install Fyne dependencies:**
-    This command installs the Fyne CLI tool, which is helpful for managing Fyne projects.
+2.  **Install the Fyne CLI Tool:**
     ```sh
-    go install fyne.io/fyne/v2/cmd/fyne@latest
+    go install fyne.io/tools/cmd/fyne@latest
     ```
 
-3.  **Tidy the Go modules:**
-    This downloads the necessary Go packages for the project.
+3.  **Download Dependencies:**
     ```sh
     go mod tidy
     ```
 
-## Build and Run Instructions
+## Development
 
-Below are the platform-specific instructions for building and running the application.
+To run the application for development, use the `go run` command.
+```sh
+go run .
+```
 
-### Windows
+**Linux Note:** If you experience rendering issues, you may need to enable software rendering:
+```sh
+LIBGL_ALWAYS_SOFTWARE=1 go run .
+```
 
-1.  **Build the application:**
-    Ensure your MSYS2 MinGW 64-bit environment is correctly configured. To build the application without a command window appearing on launch, use the following `ldflags`:
-    ```cmd
-    go build -ldflags "-H=windowsgui" -o adb-gui.exe ./cmd/adb-gui
-    ```
-    This will create an `adb-gui.exe` executable in the root directory.
+## Packaging for Release
 
-2.  **Run the application:**
-    Double-click the `adb-gui.exe` file or run it from the terminal:
-    ```cmd
-    .\adb-gui.exe
-    ```
+To create a distributable application, use the `fyne release` command.
 
-### macOS
+- **For your current OS (default format):**
+  ```sh
+  fyne release
+  ```
 
-1.  **Build the application:**
-    Open a Terminal and run:
-    ```sh
-    go build -o adb-gui ./cmd/adb-gui
-    ```
-    This will create an `adb-gui` executable in the root directory.
+### Linux Package Formats
 
-2.  **Run the application:**
-    ```sh
-    ./adb-gui
-    ```
+- **To create a `.deb` package:**
+  ```sh
+  fyne release deb
+  ```
 
-### Linux
-
-1.  **Build the application:**
-    Open a terminal and run:
-    ```sh
-    go build -o adb-gui ./cmd/adb-gui
-    ```
-    This will create an `adb-gui` executable in the root directory.
-
-2.  **Run the application:**
-    ```sh
-    ./adb-gui
-    ```
-    If you encounter rendering issues (e.g., a blank window), you may need to use software rendering:
-    ```sh
-    LIBGL_ALWAYS_SOFTWARE=1 ./adb-gui
+- **To create a `.rpm` package:**
+  ```sh
+  fyne release rpm
