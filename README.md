@@ -38,9 +38,9 @@ Below are the platform-specific instructions for building and running the applic
 ### Windows
 
 1.  **Build the application:**
-    Ensure your MSYS2 MinGW 64-bit environment is correctly configured. Open a Command Prompt or PowerShell window and run:
+    Ensure your MSYS2 MinGW 64-bit environment is correctly configured. To build the application without a command window appearing on launch, use the following `ldflags`:
     ```cmd
-    go build -o adb-gui.exe ./cmd/adb-gui
+    go build -ldflags "-H=windowsgui" -o adb-gui.exe ./cmd/adb-gui
     ```
     This will create an `adb-gui.exe` executable in the root directory.
 
