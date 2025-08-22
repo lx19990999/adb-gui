@@ -43,6 +43,12 @@ func (m *Manager) Exec(args ...string) (string, error) {
 	}
 	cmd := exec.Command(bin, args...)
 	cmd.Env = os.Environ()
+
+	// 在Windows下隐藏CMD窗口
+	if runtime.GOOS == "windows" {
+		hideWindowsWindow(cmd)
+	}
+
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
@@ -67,6 +73,12 @@ func (m *Manager) ExecFastboot(serial string, args ...string) (string, error) {
 	}
 	cmd := exec.Command(bin, args...)
 	cmd.Env = os.Environ()
+
+	// 在Windows下隐藏CMD窗口
+	if runtime.GOOS == "windows" {
+		hideWindowsWindow(cmd)
+	}
+
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
@@ -741,6 +753,12 @@ func (m *Manager) ExecRaw(args ...string) ([]byte, error) {
 	}
 	cmd := exec.Command(bin, args...)
 	cmd.Env = os.Environ()
+
+	// 在Windows下隐藏CMD窗口
+	if runtime.GOOS == "windows" {
+		hideWindowsWindow(cmd)
+	}
+
 	return cmd.CombinedOutput()
 }
 
@@ -853,4 +871,10 @@ func (m *Manager) ExtractAppData(serial, pkg, destDir string) (string, error) {
 		return "", writeErr
 	}
 	return "app data archived to " + tarPath, nil
+}
+
+// hideWindowsWindow 在Windows下隐藏CMD窗口
+// 在非Windows系统下是空实现，在Windows下由adb_windows.go提供实现
+func hideWindowsWindow(cmd *exec.Cmd) {
+	// 空实现，Windows版本会覆盖此函数
 }

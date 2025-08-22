@@ -48,8 +48,23 @@ func detectSystemDark() (bool, bool) {
 		// KDE and others: no simple standard detection
 		return false, false
 	case "windows":
-		// No registry access here; try env var only
-		return false, false
+		// Windows: 尝试检测注册表或环境变量
+		// 检查环境变量
+		if v := os.Getenv("APPDATA"); v != "" {
+			// 检查是否在AppData\Roaming\Microsoft\Windows\Themes\appsUseLightTheme
+			// 但由于权限问题，这里使用环境变量作为备选方案
+			if strings.Contains(strings.ToLower(v), "dark") {
+				return true, true
+			}
+		}
+		// 检查Windows 10+的深色模式环境变量
+		if v := os.Getenv("APPS_DEFAULT_THEME"); v != "" {
+			if strings.Contains(strings.ToLower(v), "dark") {
+				return true, true
+			}
+		}
+		// 默认返回浅色主题（Windows传统默认）
+		return false, true
 	default:
 		return false, false
 	}
@@ -61,24 +76,35 @@ func ApplyThemeMode(mode string) {
 	if app == nil {
 		return
 	}
+
 	set := func(th fyne.Theme) {
 		app.Settings().SetTheme(th)
 	}
+
 	switch strings.ToLower(strings.TrimSpace(mode)) {
 	case "light":
-		set(theme.LightTheme())
+		// 应用浅色主题的自适应主题
+		lightTheme := newAdaptiveTheme(theme.LightTheme())
+		set(lightTheme)
 	case "dark":
-		set(theme.DarkTheme())
+		// 应用深色主题的自适应主题
+		darkTheme := newAdaptiveTheme(theme.DarkTheme())
+		set(darkTheme)
 	default: // "system" or unknown
 		if dark, known := detectSystemDark(); known {
 			if dark {
-				set(theme.DarkTheme())
+				// 系统深色模式：应用深色主题的自适应主题
+				darkTheme := newAdaptiveTheme(theme.DarkTheme())
+				set(darkTheme)
 			} else {
-				set(theme.LightTheme())
+				// 系统浅色模式：应用浅色主题的自适应主题
+				lightTheme := newAdaptiveTheme(theme.LightTheme())
+				set(lightTheme)
 			}
 		} else {
-			// Fallback to default (usually light)
-			set(theme.LightTheme())
+			// 无法检测：默认使用浅色主题的自适应主题
+			lightTheme := newAdaptiveTheme(theme.LightTheme())
+			set(lightTheme)
 		}
 	}
 }

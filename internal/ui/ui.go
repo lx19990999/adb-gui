@@ -126,10 +126,10 @@ func DefaultWindowSize() fyne.Size {
 // BuildUI constructs the main application UI:
 // - top main menu
 // - below a horizontal split: left devices list, right AppTabs:
-//   1) Applications
-//   2) Storage
-//   3) Parameters
-//   4) Commands
+//  1. Applications
+//  2. Storage
+//  3. Parameters
+//  4. Commands
 func BuildUI(w fyne.Window, a fyne.App, mgr *adb.Manager, cfg *config.Config) {
 	// Menu bar
 	menu := buildMainMenu(a, w, mgr, cfg)
@@ -196,15 +196,23 @@ func BuildUI(w fyne.Window, a fyne.App, mgr *adb.Manager, cfg *config.Config) {
 }
 
 func buildMainMenu(a fyne.App, w fyne.Window, mgr *adb.Manager, cfg *config.Config) *fyne.MainMenu {
+	// 创建设置菜单项
 	settings := fyne.NewMenuItem("Settings…", func() {
 		openSettingsDialog(w, mgr, cfg)
 	})
-	quit := fyne.NewMenuItem("Quit", func() { a.Quit() })
+	
+	// 创建关于菜单项
 	about := fyne.NewMenuItem("About", func() {
 		dialog.ShowInformation("About", "ADB GUI\nCross-platform UI for Android Debug Bridge", w)
 	})
-	fileMenu := fyne.NewMenu("File", settings, quit)
+	
+	// 构建文件菜单，只包含设置选项
+	fileMenu := fyne.NewMenu("File", settings)
+	
+	// 构建帮助菜单
 	helpMenu := fyne.NewMenu("Help", about)
+	
+	// 返回主菜单
 	return fyne.NewMainMenu(fileMenu, helpMenu)
 }
 
@@ -310,6 +318,24 @@ func buildApplicationsTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind bi
 			name.Truncation = fyne.TextTruncateOff
 			name.Wrapping = fyne.TextWrapOff
 			name.Alignment = fyne.TextAlignLeading
+			// 应用自适应颜色
+			if app := fyne.CurrentApp(); app != nil {
+				if settings := app.Settings(); settings != nil {
+					if currentTheme := settings.Theme(); currentTheme != nil {
+						// 尝试检测当前主题变体
+						bgColorLight := currentTheme.Color(theme.ColorNameBackground, theme.VariantLight)
+						bgColorDark := currentTheme.Color(theme.ColorNameBackground, theme.VariantDark)
+						if bgColorLight != bgColorDark {
+							// 如果深色和浅色主题的背景色不同，尝试检测当前主题
+							// 使用颜色亮度来判断
+							if isDarkColor(bgColorLight) {
+								// 当前是深色主题
+							}
+						}
+						// 注意：这里我们不能直接设置Label的颜色，但可以通过主题系统来影响
+					}
+				}
+			}
 			btnUninstall := widget.NewButton("Uninstall", nil)
 			btnClear := widget.NewButton("Clear Data", nil)
 			btnForceStop := widget.NewButton("Force Stop", nil)
@@ -918,7 +944,8 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 		func() int { return len(files) },
 		func() fyne.CanvasObject {
 			chk := widget.NewCheck("", nil)
-			label := newColoredLabel("file", color.White)
+			// 使用自适应颜色，不再硬编码白色
+			label := newColoredLabel("file", color.Black) // 默认颜色，会在更新时动态调整
 			return container.NewBorder(nil, nil, chk, nil, label)
 		},
 		func(i widget.ListItemID, o fyne.CanvasObject) {
@@ -941,10 +968,41 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 
 			if label != nil {
 				label.text = f.Name
-				if f.IsDir {
-					label.color = color.NRGBA{B: 255, A: 255}
+				// 使用自适应颜色系统
+				if app := fyne.CurrentApp(); app != nil {
+					if settings := app.Settings(); settings != nil {
+						if currentTheme := settings.Theme(); currentTheme != nil {
+							// 检测当前主题变体
+							variant := theme.VariantLight // 默认浅色
+							bgColor := currentTheme.Color(theme.ColorNameBackground, theme.VariantLight)
+							if isDarkColor(bgColor) {
+								variant = theme.VariantDark
+							}
+							// 应用自适应颜色
+							label.color = getFileItemColor(f.IsDir, variant)
+						} else {
+							// 回退到传统颜色
+							if f.IsDir {
+								label.color = color.NRGBA{B: 255, A: 255}
+							} else {
+								label.color = color.Black
+							}
+						}
+					} else {
+						// 回退到传统颜色
+						if f.IsDir {
+							label.color = color.NRGBA{B: 255, A: 255}
+						} else {
+							label.color = color.Black
+						}
+					}
 				} else {
-					label.color = color.White
+					// 回退到传统颜色
+					if f.IsDir {
+						label.color = color.NRGBA{B: 255, A: 255}
+					} else {
+						label.color = color.Black
+					}
 				}
 				label.Refresh()
 			}
