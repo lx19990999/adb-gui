@@ -55,6 +55,22 @@ func (m *Manager) ExecSerial(serial string, args ...string) (string, error) {
 	return m.Exec(args...)
 }
 
+// ExecFastboot runs a fastboot command.
+func (m *Manager) ExecFastboot(serial string, args ...string) (string, error) {
+	// Fastboot may not be in the same directory as adb, so we look for it in the path.
+	bin, err := exec.LookPath("fastboot")
+	if err != nil {
+		return "", errors.New("fastboot executable not found in PATH")
+	}
+	if strings.TrimSpace(serial) != "" {
+		args = append([]string{"-s", serial}, args...)
+	}
+	cmd := exec.Command(bin, args...)
+	cmd.Env = os.Environ()
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+
 func (m *Manager) Version() (string, error) {
 	return m.Exec("version")
 }
@@ -75,34 +91,54 @@ type Device struct {
 
 func (m *Manager) Devices() ([]Device, string, error) {
 	m.EnsureServer()
-	out, err := m.Exec("devices", "-l")
-	if err == nil {
-		devs := parseDevices(out)
-		if len(devs) > 0 {
-			return devs, out, nil
-		}
-		// Retry once after short delay - server may be just starting
-		_, _ = m.Exec("wait-for-any-device")
-		out2, err2 := m.Exec("devices", "-l")
-		if err2 == nil {
-			d2 := parseDevices(out2)
-			if len(d2) > 0 {
-				return d2, out2, nil
-			}
-			// Fallback: try without "-l"
-			alt, err3 := m.Exec("devices")
-			if err3 == nil {
-				d3 := parseDevices(alt)
-				if len(d3) > 0 {
-					return d3, alt, nil
-				}
-			}
+	// Get ADB devices
+	adbOut, adbErr := m.Exec("devices", "-l")
+	adbDevices := parseDevices(adbOut)
+
+	// Get Fastboot devices
+	fbOut, _ := m.ExecFastboot("", "devices")
+	fbDevices := parseFastbootDevices(fbOut)
+
+	// Merge lists, giving precedence to ADB info if a device is in both
+	merged := make(map[string]Device)
+	for _, d := range adbDevices {
+		merged[d.Serial] = d
+	}
+	for _, d := range fbDevices {
+		if _, exists := merged[d.Serial]; !exists {
+			merged[d.Serial] = d
 		}
 	}
-	if err != nil {
-		return nil, out, err
+
+	var result []Device
+	for _, d := range merged {
+		result = append(result, d)
 	}
-	return []Device{}, out, nil
+
+	return result, adbOut + "\n" + fbOut, adbErr
+}
+
+// Sideload puts the device into sideload mode and installs a package.
+func (m *Manager) Sideload(serial, path string) (string, error) {
+	if strings.TrimSpace(path) == "" {
+		return "", errors.New("sideload path cannot be empty")
+	}
+	return m.ExecSerial(serial, "sideload", path)
+}
+
+func parseFastbootDevices(output string) []Device {
+	var devices []Device
+	lines := strings.Split(output, "\n")
+	for _, line := range lines {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && fields[1] == "fastboot" {
+			devices = append(devices, Device{
+				Serial: fields[0],
+				State:  "fastboot",
+			})
+		}
+	}
+	return devices
 }
 
 func parseDevices(output string) []Device {
@@ -346,6 +382,31 @@ func (m *Manager) GetProps(serial string) (map[string]string, string, error) {
 		}
 	}
 	return props, out, nil
+}
+
+// GetVarAll returns all fastboot variables as a map.
+func (m *Manager) GetVarAll(serial string) (map[string]string, string, error) {
+	out, err := m.ExecFastboot(serial, "getvar", "all")
+	if err != nil {
+		return nil, out, err
+	}
+	vars := make(map[string]string)
+	// Output is line-by-line, but multiline values are indented.
+	// Example:
+	// (bootloader) C:\fakepath\NON-HLOS.bin:raw data download...
+	// (bootloader) partition-type:modem:raw
+	// (bootloader) partition-size:modem: 0x0...
+	re := regexp.MustCompile(`^\(bootloader\) (.+?):(.*)`)
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		match := re.FindStringSubmatch(line)
+		if len(match) == 3 {
+			key := strings.TrimSpace(match[1])
+			val := strings.TrimSpace(match[2])
+			vars[key] = val
+		}
+	}
+	return vars, out, nil
 }
 	// InstalledPackagesForUser returns installed package names for a specific user.
 func (m *Manager) InstalledPackagesForUser(serial string, userID int) ([]string, string, error) {

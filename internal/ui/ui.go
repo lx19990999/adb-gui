@@ -2,23 +2,72 @@ package ui
 
 import (
 	"fmt"
+	"image/color"
 	"log"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
-	"sort"
 
 	"adb-gui/internal/adb"
 	"adb-gui/internal/config"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/data/binding"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
+
+// coloredLabel is a custom widget for displaying colored text
+type coloredLabel struct {
+	widget.BaseWidget
+	text  string
+	color color.Color
+}
+
+func newColoredLabel(text string, color color.Color) *coloredLabel {
+	l := &coloredLabel{text: text, color: color}
+	l.ExtendBaseWidget(l)
+	return l
+}
+
+func (l *coloredLabel) CreateRenderer() fyne.WidgetRenderer {
+	text := canvas.NewText(l.text, l.color)
+	return &coloredLabelRenderer{
+		label: l,
+		text:  text,
+	}
+}
+
+type coloredLabelRenderer struct {
+	label *coloredLabel
+	text  *canvas.Text
+}
+
+func (r *coloredLabelRenderer) Layout(size fyne.Size) {
+	r.text.Resize(size)
+}
+
+func (r *coloredLabelRenderer) MinSize() fyne.Size {
+	return r.text.MinSize()
+}
+
+func (r *coloredLabelRenderer) Refresh() {
+	r.text.Text = r.label.text
+	r.text.Color = r.label.color
+	r.text.Refresh()
+}
+
+func (r *coloredLabelRenderer) Objects() []fyne.CanvasObject {
+	return []fyne.CanvasObject{r.text}
+}
+
+func (r *coloredLabelRenderer) Destroy() {}
+
 // helpers to safely locate widgets inside compound row containers
 func findFirstLabel(obj fyne.CanvasObject) *widget.Label {
 	switch t := obj.(type) {
@@ -53,6 +102,7 @@ func findButtons(obj fyne.CanvasObject, n int) []*widget.Button {
 	}
 	return res
 }
+
 // findFirstCheck walks the object tree to find the first checkbox widget.
 func findFirstCheck(obj fyne.CanvasObject) *widget.Check {
 	switch t := obj.(type) {
@@ -72,7 +122,6 @@ func findFirstCheck(obj fyne.CanvasObject) *widget.Check {
 func DefaultWindowSize() fyne.Size {
 	return fyne.NewSize(1200, 760)
 }
- 
 
 // BuildUI constructs the main application UI:
 // - top main menu
@@ -96,16 +145,20 @@ func BuildUI(w fyne.Window, a fyne.App, mgr *adb.Manager, cfg *config.Config) {
 	leftPanel, refreshDevices := buildDevicesPanel(w, mgr, &devices, selectedSerialBind, devCountBind, statusBind)
 
 	// Right: tabs dependent on selected device
-	appsTab := buildApplicationsTab(w, mgr, selectedSerialBind)
+	appsTab := buildApplicationsTab(w, mgr, selectedSerialBind, &devices)
 	storageTab := buildStorageTab(w, mgr, selectedSerialBind)
 	paramsTab := buildParametersTab(w, mgr, selectedSerialBind)
+	getVarTab := buildGetVarTab(w, mgr, selectedSerialBind)
 	cmdsTab := buildCommandsTab(w, mgr, selectedSerialBind)
+	fastbootTab := buildFastbootTab(w, mgr, selectedSerialBind)
 
 	rightTabs := container.NewAppTabs(
 		container.NewTabItem("Applications", appsTab),
 		container.NewTabItem("Storage", storageTab),
 		container.NewTabItem("Parameters", paramsTab),
+		container.NewTabItem("GetVar", getVarTab),
 		container.NewTabItem("Commands", cmdsTab),
+		container.NewTabItem("Fastboot", fastbootTab),
 	)
 	rightTabs.SetTabLocation(container.TabLocationTop)
 
@@ -175,7 +228,7 @@ func buildDevicesPanel(
 			return len(*devices)
 		},
 		func() fyne.CanvasObject {
-			return widget.NewLabel("serial | state | model | device")
+			return widget.NewLabel("serial")
 		},
 		func(i widget.ListItemID, o fyne.CanvasObject) {
 			if i < 0 || i >= len(*devices) {
@@ -184,7 +237,7 @@ func buildDevicesPanel(
 			d := (*devices)[i]
 			lbl := o.(*widget.Label)
 			lbl.Truncation = fyne.TextTruncateEllipsis
-			lbl.Text = fmt.Sprintf("%s   | %s | %s | %s", d.Serial, d.State, d.Model, d.Device)
+			lbl.SetText(d.Serial)
 		},
 	)
 	list.OnSelected = func(id widget.ListItemID) {
@@ -225,7 +278,7 @@ func buildDevicesPanel(
 }
 
 // Applications tab: list installed packages for selected device
-func buildApplicationsTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding.String) fyne.CanvasObject {
+func buildApplicationsTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding.String, devices *[]adb.Device) fyne.CanvasObject {
 	// State
 	var pkgs []string
 	selectedUserID := 0
@@ -326,7 +379,7 @@ func buildApplicationsTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind bi
 					selectedPkgs[nameCopy] = v
 				}
 			}
-	
+
 			btnUninstall := btnBar.Objects[0].(*widget.Button)
 			btnClear := btnBar.Objects[1].(*widget.Button)
 			btnForce := btnBar.Objects[2].(*widget.Button)
@@ -623,9 +676,15 @@ func buildApplicationsTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind bi
 
 	// Auto refresh when device selection changes
 	selectedSerialBind.AddListener(binding.NewDataListener(func() {
-		refreshUsers()
-		if refreshPackages != nil {
-			refreshPackages()
+		serial, _ := selectedSerialBind.Get()
+		for _, d := range *devices {
+			if d.Serial == serial && d.State != "fastboot" {
+				refreshUsers()
+				if refreshPackages != nil {
+					refreshPackages()
+				}
+				return
+			}
 		}
 	}))
 
@@ -779,90 +838,88 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 	var curPathBind binding.String
 	var loadDir func(string)
 	var applySort func()
-// Apply sorting according to current sortMode
-applySort = func() {
-	mode := sortMode
+	// Apply sorting according to current sortMode
+	applySort = func() {
+		mode := sortMode
 
-	// Best-effort parse of ModTime captured from ls -l (varies by ROM)
-	parseTime := func(s string) time.Time {
-		layouts := []string{
-			"2006-01-02 15:04",
-			"2006-01-02 15:04:05",
-			"2006-01-02",
-			"Jan _2 15:04",
-			"Jan _2 2006",
-			time.RFC3339,
-			time.ANSIC,
-		}
-		for _, l := range layouts {
-			if t, err := time.Parse(l, strings.TrimSpace(s)); err == nil {
-				return t
+		// Best-effort parse of ModTime captured from ls -l (varies by ROM)
+		parseTime := func(s string) time.Time {
+			layouts := []string{
+				"2006-01-02 15:04",
+				"2006-01-02 15:04:05",
+				"2006-01-02",
+				"Jan _2 15:04",
+				"Jan _2 2006",
+				time.RFC3339,
+				time.ANSIC,
 			}
+			for _, l := range layouts {
+				if t, err := time.Parse(l, strings.TrimSpace(s)); err == nil {
+					return t
+				}
+			}
+			return time.Time{}
 		}
-		return time.Time{}
-	}
 
-	switch mode {
-	case "按照字母顺序排序":
-		sort.SliceStable(files, func(i, j int) bool {
-			return strings.ToLower(files[i].Name) < strings.ToLower(files[j].Name)
-		})
-	case "按照字母倒序排序":
-		sort.SliceStable(files, func(i, j int) bool {
-			return strings.ToLower(files[i].Name) > strings.ToLower(files[j].Name)
-		})
-	case "按照文件大小从小到大排序":
-		sort.SliceStable(files, func(i, j int) bool {
-			return files[i].Size < files[j].Size
-		})
-	case "按照文件大小从大到小排序":
-		sort.SliceStable(files, func(i, j int) bool {
-			return files[i].Size > files[j].Size
-		})
-	case "按照修改时间从远到近排序":
-		sort.SliceStable(files, func(i, j int) bool {
-			ti := parseTime(files[i].ModTime)
-			tj := parseTime(files[j].ModTime)
-			if ti.IsZero() && tj.IsZero() {
+		switch mode {
+		case "按照字母顺序排序":
+			sort.SliceStable(files, func(i, j int) bool {
 				return strings.ToLower(files[i].Name) < strings.ToLower(files[j].Name)
-			}
-			if ti.IsZero() {
-				return true
-			}
-			if tj.IsZero() {
-				return false
-			}
-			return ti.Before(tj)
-		})
-	case "按照修改时间从近到远排序":
-		sort.SliceStable(files, func(i, j int) bool {
-			ti := parseTime(files[i].ModTime)
-			tj := parseTime(files[j].ModTime)
-			if ti.IsZero() && tj.IsZero() {
+			})
+		case "按照字母倒序排序":
+			sort.SliceStable(files, func(i, j int) bool {
+				return strings.ToLower(files[i].Name) > strings.ToLower(files[j].Name)
+			})
+		case "按照文件大小从小到大排序":
+			sort.SliceStable(files, func(i, j int) bool {
+				return files[i].Size < files[j].Size
+			})
+		case "按照文件大小从大到小排序":
+			sort.SliceStable(files, func(i, j int) bool {
+				return files[i].Size > files[j].Size
+			})
+		case "按照修改时间从远到近排序":
+			sort.SliceStable(files, func(i, j int) bool {
+				ti := parseTime(files[i].ModTime)
+				tj := parseTime(files[j].ModTime)
+				if ti.IsZero() && tj.IsZero() {
+					return strings.ToLower(files[i].Name) < strings.ToLower(files[j].Name)
+				}
+				if ti.IsZero() {
+					return true
+				}
+				if tj.IsZero() {
+					return false
+				}
+				return ti.Before(tj)
+			})
+		case "按照修改时间从近到远排序":
+			sort.SliceStable(files, func(i, j int) bool {
+				ti := parseTime(files[i].ModTime)
+				tj := parseTime(files[j].ModTime)
+				if ti.IsZero() && tj.IsZero() {
+					return strings.ToLower(files[i].Name) < strings.ToLower(files[j].Name)
+				}
+				if ti.IsZero() {
+					return false
+				}
+				if tj.IsZero() {
+					return true
+				}
+				return ti.After(tj)
+			})
+		default:
+			sort.SliceStable(files, func(i, j int) bool {
 				return strings.ToLower(files[i].Name) < strings.ToLower(files[j].Name)
-			}
-			if ti.IsZero() {
-				return false
-			}
-			if tj.IsZero() {
-				return true
-			}
-			return ti.After(tj)
-		})
-	default:
-		sort.SliceStable(files, func(i, j int) bool {
-			return strings.ToLower(files[i].Name) < strings.ToLower(files[j].Name)
-		})
+			})
+		}
 	}
-}
 	filesList := widget.NewList(
 		func() int { return len(files) },
 		func() fyne.CanvasObject {
 			chk := widget.NewCheck("", nil)
-			lbl := widget.NewLabel("")
-			lbl.Truncation = fyne.TextTruncateOff
-			lbl.Wrapping = fyne.TextWrapOff
-			return container.NewBorder(nil, nil, chk, nil, lbl)
+			label := newColoredLabel("file", color.White)
+			return container.NewBorder(nil, nil, chk, nil, label)
 		},
 		func(i widget.ListItemID, o fyne.CanvasObject) {
 			if i < 0 || i >= len(files) {
@@ -870,14 +927,26 @@ applySort = func() {
 			}
 			f := files[i]
 			box := o.(*fyne.Container)
-			lbl := findFirstLabel(box)
-			chk := findFirstCheck(box)
-			if lbl != nil {
-				prefix := ""
-				if f.IsDir {
-					prefix = "[DIR] "
+
+			var chk *widget.Check
+			var label *coloredLabel
+			for _, obj := range box.Objects {
+				if c, ok := obj.(*widget.Check); ok {
+					chk = c
 				}
-				lbl.SetText(prefix + f.Name)
+				if l, ok := obj.(*coloredLabel); ok {
+					label = l
+				}
+			}
+
+			if label != nil {
+				label.text = f.Name
+				if f.IsDir {
+					label.color = color.NRGBA{B: 255, A: 255}
+				} else {
+					label.color = color.White
+				}
+				label.Refresh()
 			}
 			if chk != nil {
 				nameCopy := f.Name
@@ -1127,102 +1196,280 @@ applySort = func() {
 		dd.Show()
 	})
 
-		// Top controls
-		btnSelAllFiles := widget.NewButton("全选", func() {
-			for _, f := range files {
-				selectedNames[f.Name] = true
-			}
-			filesList.Refresh()
-		})
-		btnSelNoneFiles := widget.NewButton("清空选择", func() {
-			selectedNames = map[string]bool{}
-			filesList.Refresh()
-		})
-		controls := container.NewHBox(userSelect, btnUp, btnRefresh, sortSelect, btnSelAllFiles, btnSelNoneFiles, btnUpload, btnDownload)
-		// Make path entry expand to full width; keep label at left and "Open" at right
-		pathRow := container.NewBorder(nil, nil, widget.NewLabel("Path:"), btnOpen, pathEntry)
-		top := container.NewVBox(
-			container.NewHBox(widget.NewLabel("User:"), controls),
-			pathRow,
-		)
-	
-		return container.NewBorder(top, nil, nil, nil, filesList)
+	// Top controls
+	btnSelAllFiles := widget.NewButton("全选", func() {
+		for _, f := range files {
+			selectedNames[f.Name] = true
+		}
+		filesList.Refresh()
+	})
+	btnSelNoneFiles := widget.NewButton("清空选择", func() {
+		selectedNames = map[string]bool{}
+		filesList.Refresh()
+	})
+	controls := container.NewHBox(userSelect, btnUp, btnRefresh, sortSelect, btnSelAllFiles, btnSelNoneFiles, btnUpload, btnDownload)
+	// Make path entry expand to full width; keep label at left and "Open" at right
+	pathRow := container.NewBorder(nil, nil, widget.NewLabel("Path:"), btnOpen, pathEntry)
+	top := container.NewVBox(
+		container.NewHBox(widget.NewLabel("User:"), controls),
+		pathRow,
+	)
+
+	return container.NewBorder(top, nil, nil, nil, filesList)
 }
 
 // Parameters tab: show getprop key/value
 func buildParametersTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding.String) fyne.CanvasObject {
-	propsBind := binding.NewStringList()
-	list := widget.NewListWithData(
-		propsBind,
-		func() fyne.CanvasObject { return widget.NewLabel("") },
-		func(di binding.DataItem, o fyne.CanvasObject) {
-			o.(*widget.Label).Bind(di.(binding.String))
+	return buildKeyValueTab(w, "Parameters", selectedSerialBind, func(serial string) (map[string]string, error) {
+		props, _, err := mgr.GetProps(serial)
+		return props, err
+	})
+}
+
+func buildGetVarTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding.String) fyne.CanvasObject {
+	return buildKeyValueTab(w, "GetVar", selectedSerialBind, func(serial string) (map[string]string, error) {
+		vars, _, err := mgr.GetVarAll(serial)
+		return vars, err
+	})
+}
+
+// buildKeyValueTab creates a generic tab for displaying key-value pairs with multi-select and copy.
+func buildKeyValueTab(w fyne.Window, title string, selectedSerialBind binding.String, fetcher func(string) (map[string]string, error)) fyne.CanvasObject {
+	var items []string
+	selectedItems := make(map[string]bool)
+
+	list := widget.NewList(
+		func() int { return len(items) },
+		func() fyne.CanvasObject {
+			return container.NewHBox(widget.NewCheck("", nil), widget.NewLabel("key = value"))
+		},
+		func(i widget.ListItemID, o fyne.CanvasObject) {
+			if i < 0 || i >= len(items) {
+				return
+			}
+			item := items[i]
+			box := o.(*fyne.Container)
+			check := box.Objects[0].(*widget.Check)
+			label := box.Objects[1].(*widget.Label)
+			label.SetText(item)
+			check.SetChecked(selectedItems[item])
+			check.OnChanged = func(checked bool) {
+				selectedItems[item] = checked
+			}
 		},
 	)
+
 	doRefresh := func() {
 		serial, _ := selectedSerialBind.Get()
 		if serial == "" {
-			fyne.Do(func() { _ = propsBind.Set([]string{"Select a device."}) })
+			items = []string{"Select a device."}
+			list.Refresh()
 			return
 		}
 		go func() {
-			props, _, err := mgr.GetProps(serial)
+			data, err := fetcher(serial)
 			fyne.Do(func() {
 				if err != nil {
-					_ = propsBind.Set([]string{"Error: " + err.Error()})
+					items = []string{"Error: " + err.Error()}
+					list.Refresh()
 					return
 				}
-				lines := make([]string, 0, len(props))
-				for k, v := range props {
+				var lines []string
+				for k, v := range data {
 					lines = append(lines, fmt.Sprintf("%s = %s", k, v))
 				}
-				if len(lines) == 0 {
-					lines = []string{"No properties returned."}
+				sort.Strings(lines)
+				items = lines
+				if len(items) == 0 {
+					items = []string{"No data returned."}
 				}
-				_ = propsBind.Set(lines)
+				selectedItems = make(map[string]bool)
+				list.Refresh()
 			})
 		}()
 	}
-	refreshBtn := widget.NewButton("Refresh", doRefresh)
 
-	// Auto refresh on device change
-	selectedSerialBind.AddListener(binding.NewDataListener(func() { doRefresh() }))
+	refreshBtn := widget.NewButton("Refresh", doRefresh)
+	copyBtn := widget.NewButton("Copy Selected", func() {
+		var toCopy []string
+		for _, item := range items {
+			if selectedItems[item] {
+				toCopy = append(toCopy, item)
+			}
+		}
+		if len(toCopy) > 0 {
+			w.Clipboard().SetContent(strings.Join(toCopy, "\n"))
+		}
+	})
+	selectAllBtn := widget.NewButton("Select All", func() {
+		for _, item := range items {
+			selectedItems[item] = true
+		}
+		list.Refresh()
+	})
+	deselectAllBtn := widget.NewButton("Deselect All", func() {
+		selectedItems = make(map[string]bool)
+		list.Refresh()
+	})
+
+	selectedSerialBind.AddListener(binding.NewDataListener(doRefresh))
 
 	return container.NewBorder(
-		container.NewHBox(widget.NewLabel("Parameters"), refreshBtn),
+		container.NewHBox(widget.NewLabel(title), refreshBtn, copyBtn, selectAllBtn, deselectAllBtn),
 		nil, nil, nil, list,
 	)
 }
 
 // Commands tab: basic device actions (reboot etc.)
 func buildCommandsTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding.String) fyne.CanvasObject {
-	modeSelect := widget.NewSelect([]string{"", "recovery", "bootloader"}, func(string) {})
-	modeSelect.PlaceHolder = "normal"
-	rebootBtn := widget.NewButton("Reboot", func() {
-		serial, _ := selectedSerialBind.Get()
-		if serial == "" {
-			dialog.ShowInformation("No device", "Please select a device.", w)
-			return
-		}
-		mode := modeSelect.Selected
+	// ADB Commands
+	btnReboot := widget.NewButton("Reboot", func() {
 		go func() {
-			out, err := mgr.Reboot(serial, mode)
-			msg := "Reboot requested."
-			if err != nil {
-				msg = "Error: " + err.Error() + "\n" + out
-			}
-			fyne.Do(func() {
-				dialog.ShowInformation("Reboot", msg, w)
-			})
+			out, err := mgr.Reboot(mustGet(selectedSerialBind), "")
+			showCmdResult("Reboot", out, err, w)
 		}()
 	})
-	form := widget.NewForm(
-		widget.NewFormItem("Reboot mode", modeSelect),
+	btnRebootBootloader := widget.NewButton("Reboot to Bootloader", func() {
+		go func() {
+			out, err := mgr.Reboot(mustGet(selectedSerialBind), "bootloader")
+			showCmdResult("Reboot to Bootloader", out, err, w)
+		}()
+	})
+	btnRebootRecovery := widget.NewButton("Reboot to Recovery", func() {
+		go func() {
+			out, err := mgr.Reboot(mustGet(selectedSerialBind), "recovery")
+			showCmdResult("Reboot to Recovery", out, err, w)
+		}()
+	})
+	fileSideload := widget.NewLabel("")
+	btnSideload := widget.NewButton("Sideload ZIP...", func() {
+		dialog.ShowFileOpen(func(reader fyne.URIReadCloser, err error) {
+			if err != nil || reader == nil {
+				return
+			}
+			path := reader.URI().Path()
+			fileSideload.SetText(path)
+			go func() {
+				out, err := mgr.Sideload(mustGet(selectedSerialBind), path)
+				showCmdResult("Sideload", out, err, w)
+			}()
+		}, w)
+	})
+
+	return container.NewVBox(
+		widget.NewLabelWithStyle("ADB Commands", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		container.NewHBox(btnReboot, btnRebootBootloader, btnRebootRecovery),
+		container.NewHBox(btnSideload, fileSideload),
 	)
-	return container.NewBorder(
-		nil, nil, nil, nil,
-		container.NewVBox(form, rebootBtn),
+}
+
+func buildFastbootTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding.String) fyne.CanvasObject {
+	// Fastboot Commands
+	btnFbReboot := widget.NewButton("Reboot", func() {
+		go func() {
+			out, err := mgr.ExecFastboot(mustGet(selectedSerialBind), "reboot")
+			showCmdResult("Fastboot Reboot", out, err, w)
+		}()
+	})
+	btnFbRebootBootloader := widget.NewButton("Reboot to Bootloader", func() {
+		go func() {
+			out, err := mgr.ExecFastboot(mustGet(selectedSerialBind), "reboot-bootloader")
+			showCmdResult("Fastboot Reboot to Bootloader", out, err, w)
+		}()
+	})
+	btnFbContinue := widget.NewButton("Continue", func() {
+		go func() {
+			out, err := mgr.ExecFastboot(mustGet(selectedSerialBind), "continue")
+			showCmdResult("Fastboot Continue", out, err, w)
+		}()
+	})
+	btnFbUnlock := widget.NewButton("OEM Unlock", func() {
+		go func() {
+			out, err := mgr.ExecFastboot(mustGet(selectedSerialBind), "oem", "unlock")
+			showCmdResult("Fastboot OEM Unlock", out, err, w)
+		}()
+	})
+	btnFbFlashingUnlock := widget.NewButton("Flashing Unlock", func() {
+		go func() {
+			out, err := mgr.ExecFastboot(mustGet(selectedSerialBind), "flashing", "unlock")
+			showCmdResult("Fastboot Flashing Unlock", out, err, w)
+		}()
+	})
+	fileFlash := widget.NewLabel("")
+	btnFbFlash := widget.NewButton("Flash Partition...", func() {
+		partitionEntry := widget.NewEntry()
+		partitionEntry.PlaceHolder = "e.g., boot, recovery"
+		dialog.ShowForm("Flash Partition", "Flash", "Cancel", []*widget.FormItem{
+			widget.NewFormItem("Partition Name", partitionEntry),
+		}, func(ok bool) {
+			if !ok {
+				return
+			}
+			partition := partitionEntry.Text
+			if partition == "" {
+				return
+			}
+			dialog.ShowFileOpen(func(reader fyne.URIReadCloser, err error) {
+				if err != nil || reader == nil {
+					return
+				}
+				path := reader.URI().Path()
+				fileFlash.SetText(fmt.Sprintf("%s: %s", partition, path))
+				go func() {
+					out, err := mgr.ExecFastboot(mustGet(selectedSerialBind), "flash", partition, path)
+					showCmdResult("Fastboot Flash", out, err, w)
+				}()
+			}, w)
+		}, w)
+	})
+	fileUpdate := widget.NewLabel("")
+	btnFbUpdate := widget.NewButton("Update from ZIP...", func() {
+		dialog.ShowFileOpen(func(reader fyne.URIReadCloser, err error) {
+			if err != nil || reader == nil {
+				return
+			}
+			path := reader.URI().Path()
+			fileUpdate.SetText(path)
+			go func() {
+				out, err := mgr.ExecFastboot(mustGet(selectedSerialBind), "update", path)
+				showCmdResult("Fastboot Update", out, err, w)
+			}()
+		}, w)
+	})
+	btnFbOemDeviceInfo := widget.NewButton("OEM Device Info", func() {
+		go func() {
+			out, err := mgr.ExecFastboot(mustGet(selectedSerialBind), "oem", "device-info")
+			showCmdResult("Fastboot OEM Device Info", out, err, w)
+		}()
+	})
+	btnFbOemEdl := widget.NewButton("OEM EDL", func() {
+		go func() {
+			out, err := mgr.ExecFastboot(mustGet(selectedSerialBind), "oem", "edl")
+			showCmdResult("Fastboot OEM EDL", out, err, w)
+		}()
+	})
+
+	return container.NewVBox(
+		widget.NewLabelWithStyle("Fastboot Commands", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		container.NewHBox(btnFbReboot, btnFbRebootBootloader, btnFbContinue),
+		container.NewHBox(btnFbUnlock, btnFbFlashingUnlock),
+		container.NewHBox(btnFbFlash, fileFlash),
+		container.NewHBox(btnFbUpdate, fileUpdate),
+		container.NewHBox(btnFbOemDeviceInfo, btnFbOemEdl),
 	)
+}
+
+// showCmdResult displays the output of a command in a dialog.
+func showCmdResult(title, out string, err error, w fyne.Window) {
+	fyne.Do(func() {
+		if err != nil {
+			dialog.ShowError(err, w)
+			return
+		}
+		d := dialog.NewCustom(title, "OK", widget.NewLabel(out), w)
+		d.Resize(fyne.NewSize(600, 400))
+		d.Show()
+	})
 }
 
 func updateStatusDevices(statusBind binding.String, mgr *adb.Manager, count int) {
@@ -1312,19 +1559,8 @@ func openSettingsDialog(w fyne.Window, mgr *adb.Manager, cfg *config.Config) {
 		}
 		mgr.Path = valid
 
-		// Apply theme immediately
-		var th fyne.Theme = theme.DefaultTheme()
-		switch mode {
-		case "light":
-			th = theme.LightTheme()
-		case "dark":
-			th = theme.DarkTheme()
-		default:
-			th = theme.DefaultTheme()
-		}
-		fyne.CurrentApp().Settings().SetTheme(th)
-
-		dialog.ShowInformation("Saved", "Settings saved successfully.", w)
+		// Theme change requires restart
+		dialog.ShowInformation("Saved", "Settings saved. Please restart the application for the theme change to take effect.", w)
 	})
 
 	form := widget.NewForm(

@@ -8,7 +8,6 @@ import (
 	"adb-gui/internal/ui"
 
 	"fyne.io/fyne/v2/app"
-	"fyne.io/fyne/v2/theme"
 )
 
 func main() {
@@ -27,16 +26,7 @@ func main() {
 	a := app.NewWithID("adb-gui")
 
 	// Apply theme from config (system by default)
-	mode := cfg.ThemeMode
-	switch mode {
-	case "dark":
-		a.Settings().SetTheme(theme.DarkTheme())
-	case "light":
-		a.Settings().SetTheme(theme.LightTheme())
-	default:
-		// Follow system preference
-		a.Settings().SetTheme(theme.DefaultTheme())
-	}
+	ui.ApplyThemeMode(cfg.ThemeMode)
 
 	w := a.NewWindow("ADB GUI")
 	w.Resize(ui.DefaultWindowSize())
