@@ -45,18 +45,87 @@ LIBGL_ALWAYS_SOFTWARE=1 go run .
 
 To create a distributable application, use the `fyne release` command.
 
+### Cross-Platform Packaging
+
 - **For your current OS (default format):**
   ```sh
   fyne release
   ```
 
-### Linux Package Formats
+### Windows
+
+- **To create a Windows executable (.exe):**
+  ```sh
+  fyne release -os windows
+  ```
+
+- **To create a Windows installer (.msi):**
+  ```sh
+  fyne release -os windows -package msi
+  ```
+
+### macOS
+
+- **To create a macOS application bundle (.app):**
+  ```sh
+  fyne release -os darwin
+  ```
+
+- **To create a macOS installer (.dmg):**
+  ```sh
+  fyne release -os darwin -package dmg
+  ```
+
+### Linux
+
+- **To create a Linux executable:**
+  ```sh
+  fyne release -os linux
+  ```
 
 - **To create a `.deb` package:**
   ```sh
-  fyne release deb
+  fyne release -os linux -package deb
   ```
 
 - **To create a `.rpm` package:**
   ```sh
-  fyne release rpm
+  fyne release -os linux -package rpm
+  ```
+
+- **To create an AppImage:**
+  ```sh
+  fyne release -os linux -package appimage
+  ```
+
+### Advanced Packaging Options
+
+- **Specify application icon:**
+  ```sh
+  fyne release -icon Icon.png
+  ```
+
+- **Set application ID:**
+  ```sh
+  fyne release -id io.github.lx19990999.adb-gui
+  ```
+
+- **Create release with version:**
+  ```sh
+  fyne release -version 1.0.0
+  ```
+
+### Build Tags for Specific Platforms
+
+For platform-specific builds, you can also use Go's build tags:
+
+```sh
+# Windows
+GOOS=windows GOARCH=amd64 go build -o adb-gui.exe .
+
+# macOS
+GOOS=darwin GOARCH=amd64 go build -o adb-gui .
+
+# Linux
+GOOS=linux GOARCH=amd64 go build -o adb-gui .
+```

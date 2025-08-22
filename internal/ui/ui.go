@@ -200,18 +200,18 @@ func buildMainMenu(a fyne.App, w fyne.Window, mgr *adb.Manager, cfg *config.Conf
 	settings := fyne.NewMenuItem("Settings…", func() {
 		openSettingsDialog(w, mgr, cfg)
 	})
-	
+
 	// 创建关于菜单项
 	about := fyne.NewMenuItem("About", func() {
 		dialog.ShowInformation("About", "ADB GUI\nCross-platform UI for Android Debug Bridge", w)
 	})
-	
+
 	// 构建文件菜单，只包含设置选项
 	fileMenu := fyne.NewMenu("File", settings)
-	
+
 	// 构建帮助菜单
 	helpMenu := fyne.NewMenu("Help", about)
-	
+
 	// 返回主菜单
 	return fyne.NewMainMenu(fileMenu, helpMenu)
 }
