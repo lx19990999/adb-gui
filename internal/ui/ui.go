@@ -153,12 +153,12 @@ func BuildUI(w fyne.Window, a fyne.App, mgr *adb.Manager, cfg *config.Config) {
 	fastbootTab := buildFastbootTab(w, mgr, selectedSerialBind)
 
 	rightTabs := container.NewAppTabs(
-		container.NewTabItem("Applications", appsTab),
-		container.NewTabItem("Storage", storageTab),
-		container.NewTabItem("Parameters", paramsTab),
-		container.NewTabItem("GetVar", getVarTab),
-		container.NewTabItem("Commands", cmdsTab),
-		container.NewTabItem("Fastboot", fastbootTab),
+		container.NewTabItem(T("applications"), appsTab),
+		container.NewTabItem(T("storage"), storageTab),
+		container.NewTabItem(T("parameters"), paramsTab),
+		container.NewTabItem(T("getvar"), getVarTab),
+		container.NewTabItem(T("commands"), cmdsTab),
+		container.NewTabItem(T("fastboot"), fastbootTab),
 	)
 	rightTabs.SetTabLocation(container.TabLocationTop)
 
@@ -174,14 +174,14 @@ func BuildUI(w fyne.Window, a fyne.App, mgr *adb.Manager, cfg *config.Config) {
 
 	// Initial load & status
 	if !mgr.IsAvailable() {
-		dialog.ShowInformation("ADB Not Found", "ADB was not detected. Set the ADB path in Settings or ensure it is in PATH.", w)
+		dialog.ShowInformation(T("adb_not_found"), T("adb_not_detected"), w)
 	}
 	refreshDevices()
 
 	go func() {
 		ver, _ := mgr.Version()
 		fyne.Do(func() {
-			_ = statusBind.Set(fmt.Sprintf("%s | Devices: %d", firstLine(ver), mustGetInt(devCountBind)))
+			_ = statusBind.Set(fmt.Sprintf("%s | %s: %d", firstLine(ver), T("devices"), mustGetInt(devCountBind)))
 		})
 	}()
 
@@ -197,20 +197,20 @@ func BuildUI(w fyne.Window, a fyne.App, mgr *adb.Manager, cfg *config.Config) {
 
 func buildMainMenu(a fyne.App, w fyne.Window, mgr *adb.Manager, cfg *config.Config) *fyne.MainMenu {
 	// 创建设置菜单项
-	settings := fyne.NewMenuItem("Settings…", func() {
+	settings := fyne.NewMenuItem(T("settings"), func() {
 		openSettingsDialog(w, mgr, cfg)
 	})
 
 	// 创建关于菜单项
-	about := fyne.NewMenuItem("About", func() {
-		dialog.ShowInformation("About", "ADB GUI\nCross-platform UI for Android Debug Bridge", w)
+	about := fyne.NewMenuItem(T("about"), func() {
+		dialog.ShowInformation(T("about"), T("about_description"), w)
 	})
 
 	// 构建文件菜单，只包含设置选项
-	fileMenu := fyne.NewMenu("File", settings)
+	fileMenu := fyne.NewMenu(T("file"), settings)
 
 	// 构建帮助菜单
-	helpMenu := fyne.NewMenu("Help", about)
+	helpMenu := fyne.NewMenu(T("help"), about)
 
 	// 返回主菜单
 	return fyne.NewMainMenu(fileMenu, helpMenu)
@@ -225,10 +225,10 @@ func buildDevicesPanel(
 	statusBind binding.String,
 ) (fyne.CanvasObject, func()) {
 
-	header := widget.NewLabel("Devices")
+	header := widget.NewLabel(T("devices"))
 
 	// Refresh button
-	refreshBtn := widget.NewButton("Refresh", nil)
+	refreshBtn := widget.NewButton(T("refresh"), nil)
 
 	// Devices list
 	list := widget.NewList(
@@ -298,15 +298,15 @@ func buildApplicationsTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind bi
 	var startLabelFetch func()
 
 	// UI elements
-	title := widget.NewLabel("Applications")
-	userSelect := widget.NewSelect([]string{"0 (Owner)"}, func(string) {})
-	userSelect.PlaceHolder = "Select user"
+	title := widget.NewLabel(T("applications"))
+	userSelect := widget.NewSelect([]string{"0 (" + T("owner_user") + ")"}, func(string) {})
+	userSelect.PlaceHolder = T("select_user")
 	// App type filter: 用户应用(第三方) / 系统应用
-	appTypeSelect := widget.NewSelect([]string{"用户应用", "系统应用"}, nil)
-	appTypeSelect.PlaceHolder = "应用类别"
-	appTypeSelect.SetSelected("用户应用")
-	pkgCount := widget.NewLabel("Packages: 0")
-	refreshBtn := widget.NewButton("Refresh", nil)
+	appTypeSelect := widget.NewSelect([]string{T("user_apps"), T("system_apps")}, nil)
+	appTypeSelect.PlaceHolder = T("app_category")
+	appTypeSelect.SetSelected(T("user_apps"))
+	pkgCount := widget.NewLabel(T("packages_count") + ": 0")
+	refreshBtn := widget.NewButton(T("refresh"), nil)
 
 	// List with action buttons per row (HBox: [checkbox][label][spacer][buttons...])
 	list := widget.NewList(
@@ -336,11 +336,11 @@ func buildApplicationsTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind bi
 					}
 				}
 			}
-			btnUninstall := widget.NewButton("Uninstall", nil)
-			btnClear := widget.NewButton("Clear Data", nil)
-			btnForceStop := widget.NewButton("Force Stop", nil)
-			btnExtractApk := widget.NewButton("Extract APK", nil)
-			btnExtractAll := widget.NewButton("Extract APK+Data", nil)
+			btnUninstall := widget.NewButton(T("uninstall"), nil)
+			btnClear := widget.NewButton(T("clear_data"), nil)
+			btnForceStop := widget.NewButton(T("force_stop"), nil)
+			btnExtractApk := widget.NewButton(T("extract_apk"), nil)
+			btnExtractAll := widget.NewButton(T("extract_apk_data"), nil)
 			btnBar := container.NewHBox(btnUninstall, btnClear, btnForceStop, btnExtractApk, btnExtractAll)
 			// Put label in center so it expands, checkbox on the left, buttons on the right
 			row := container.NewBorder(nil, nil, chk, btnBar, name)
@@ -440,16 +440,16 @@ func buildApplicationsTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind bi
 			btnUninstall.OnTapped = func() {
 				serial, _ := selectedSerialBind.Get()
 				if strings.TrimSpace(serial) == "" {
-					dialog.ShowInformation("No device", "Please select a device.", w)
+					dialog.ShowInformation(T("no_device"), T("please_select_device"), w)
 					return
 				}
 				go func() {
 					out, err := mgr.Uninstall(serial, selectedUserID, pkg)
 					fyne.Do(func() {
 						if err != nil {
-							dialog.ShowError(fmt.Errorf("uninstall failed: %v\n%s", err, out), w)
+							dialog.ShowError(fmt.Errorf("%s: %v\n%s", T("uninstall_failed"), err, out), w)
 						} else {
-							dialog.ShowInformation("Uninstall", "Uninstalled "+pkg, w)
+							dialog.ShowInformation(T("uninstall"), T("uninstalled")+" "+pkg, w)
 							if refreshPackages != nil {
 								refreshPackages()
 							}
@@ -460,16 +460,16 @@ func buildApplicationsTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind bi
 			btnClear.OnTapped = func() {
 				serial, _ := selectedSerialBind.Get()
 				if strings.TrimSpace(serial) == "" {
-					dialog.ShowInformation("No device", "Please select a device.", w)
+					dialog.ShowInformation(T("no_device"), T("please_select_device"), w)
 					return
 				}
 				go func() {
 					out, err := mgr.ClearData(serial, pkg)
 					fyne.Do(func() {
 						if err != nil {
-							dialog.ShowError(fmt.Errorf("clear data failed: %v\n%s", err, out), w)
+							dialog.ShowError(fmt.Errorf("%s: %v\n%s", T("clear_data_failed"), err, out), w)
 						} else {
-							dialog.ShowInformation("Clear Data", "Cleared data for "+pkg, w)
+							dialog.ShowInformation(T("clear_data"), T("cleared_data")+" for "+pkg, w)
 						}
 					})
 				}()
@@ -477,16 +477,16 @@ func buildApplicationsTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind bi
 			btnForce.OnTapped = func() {
 				serial, _ := selectedSerialBind.Get()
 				if strings.TrimSpace(serial) == "" {
-					dialog.ShowInformation("No device", "Please select a device.", w)
+					dialog.ShowInformation(T("no_device"), T("please_select_device"), w)
 					return
 				}
 				go func() {
 					out, err := mgr.ForceStop(serial, pkg)
 					fyne.Do(func() {
 						if err != nil {
-							dialog.ShowError(fmt.Errorf("force stop failed: %v\n%s", err, out), w)
+							dialog.ShowError(fmt.Errorf("%s: %v\n%s", T("force_stop_failed"), err, out), w)
 						} else {
-							dialog.ShowInformation("Force Stop", "Forced stop for "+pkg, w)
+							dialog.ShowInformation(T("force_stop"), T("forced_stop")+" for "+pkg, w)
 						}
 					})
 				}()
@@ -494,16 +494,16 @@ func buildApplicationsTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind bi
 			btnApk.OnTapped = func() {
 				serial, _ := selectedSerialBind.Get()
 				if strings.TrimSpace(serial) == "" {
-					dialog.ShowInformation("No device", "Please select a device.", w)
+					dialog.ShowInformation(T("no_device"), T("please_select_device"), w)
 					return
 				}
 				go func() {
 					out, err := mgr.ExtractApk(serial, pkg, pkg)
 					fyne.Do(func() {
 						if err != nil {
-							dialog.ShowError(fmt.Errorf("extract apk failed: %v\n%s", err, out), w)
+							dialog.ShowError(fmt.Errorf("%s: %v\n%s", T("extract_apk_failed"), err, out), w)
 						} else {
-							dialog.ShowInformation("Extract APK", "APK(s) extracted for "+pkg+" into current directory.", w)
+							dialog.ShowInformation(T("extract_apk"), T("apk_extracted")+" for "+pkg+" into current directory.", w)
 						}
 					})
 				}()
@@ -511,7 +511,7 @@ func buildApplicationsTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind bi
 			btnAll.OnTapped = func() {
 				serial, _ := selectedSerialBind.Get()
 				if strings.TrimSpace(serial) == "" {
-					dialog.ShowInformation("No device", "Please select a device.", w)
+					dialog.ShowInformation(T("no_device"), T("please_select_device"), w)
 					return
 				}
 				// Destination directory: ./<package>
@@ -524,12 +524,12 @@ func buildApplicationsTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind bi
 					fyne.Do(func() {
 						if err1 != nil || err2 != nil {
 							// Show combined message with any errors
-							dialog.ShowError(fmt.Errorf("extract issues:\nAPK: %v\nData: %v\n\n%s", err1, err2, msg), w)
+							dialog.ShowError(fmt.Errorf("%s:\nAPK: %v\nData: %v\n\n%s", T("extract_issues"), err1, err2, msg), w)
 						} else {
 							if msg == "" {
-								msg = "Extracted APK and app data (data.tar) to ./" + dest
+								msg = T("extracted_apk_data") + " ./" + dest
 							}
-							dialog.ShowInformation("Extract APK + Data", msg, w)
+							dialog.ShowInformation(T("extract_apk_data"), msg, w)
 						}
 					})
 				}()
@@ -600,8 +600,8 @@ func buildApplicationsTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind bi
 			fyne.Do(func() {
 				if err != nil {
 					log.Printf("[apps] load error: %v", err)
-					pkgs = []string{"Error: " + err.Error()}
-					pkgCount.SetText("Packages: 0")
+					pkgs = []string{T("error") + ": " + err.Error()}
+					pkgCount.SetText(T("packages_count") + ": 0")
 					list.Refresh()
 					return
 				}
@@ -610,7 +610,7 @@ func buildApplicationsTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind bi
 				// reset labels for new list and start async label fetching
 				labels = map[string]string{}
 				list.Refresh()
-				pkgCount.SetText(fmt.Sprintf("Packages: %d", len(plist)))
+				pkgCount.SetText(fmt.Sprintf(T("packages_count")+": %d", len(plist)))
 				// Start sequential, rate-limited fetching of app labels for current list.
 				// This avoids overloading the device and cancels when a new generation starts.
 				startLabelFetch = func() {
@@ -715,8 +715,8 @@ func buildApplicationsTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind bi
 	}))
 
 	// Initial tip
-	pkgs = []string{"Select a device to list installed packages."}
-	pkgCount.SetText("Packages: 0")
+	pkgs = []string{T("select_device_to_list_packages")}
+	pkgCount.SetText(T("packages_count") + ": 0")
 
 	// Batch helpers
 	getSelected := func() []string {
@@ -731,12 +731,12 @@ func buildApplicationsTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind bi
 	doBatch := func(title string, op func(string) (string, error), refreshAfter bool) {
 		serial, _ := selectedSerialBind.Get()
 		if strings.TrimSpace(serial) == "" {
-			dialog.ShowInformation("No device", "Please select a device.", w)
+			dialog.ShowInformation(T("no_device"), T("please_select_device"), w)
 			return
 		}
 		targets := getSelected()
 		if len(targets) == 0 {
-			dialog.ShowInformation(title, "请选择至少一个应用。", w)
+			dialog.ShowInformation(title, T("please_select_at_least_one_app"), w)
 			return
 		}
 		go func() {
@@ -746,18 +746,18 @@ func buildApplicationsTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind bi
 				out, err := op(p)
 				if err != nil {
 					failN++
-					msgs = append(msgs, fmt.Sprintf("[%s] ERROR: %v\n%s", p, err, out))
+					msgs = append(msgs, fmt.Sprintf("[%s] %s: %v\n%s", p, T("error"), err, out))
 				} else {
 					okN++
 					if strings.TrimSpace(out) != "" {
 						msgs = append(msgs, fmt.Sprintf("[%s] %s", p, out))
 					} else {
-						msgs = append(msgs, fmt.Sprintf("[%s] OK", p))
+						msgs = append(msgs, fmt.Sprintf("[%s] %s", p, T("ok")))
 					}
 				}
 				time.Sleep(100 * time.Millisecond)
 			}
-			summary := fmt.Sprintf("%s 完成: 成功 %d, 失败 %d\n\n%s", title, okN, failN, strings.Join(msgs, "\n"))
+			summary := fmt.Sprintf("%s %s: %s %d, %s %d\n\n%s", title, T("complete"), T("success"), okN, T("failed"), failN, strings.Join(msgs, "\n"))
 			fyne.Do(func() {
 				dialog.ShowInformation(title, summary, w)
 				if refreshAfter && refreshPackages != nil {
@@ -768,38 +768,38 @@ func buildApplicationsTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind bi
 	}
 
 	// Batch buttons
-	btnSelAll := widget.NewButton("全选", func() {
+	btnSelAll := widget.NewButton(T("select_all"), func() {
 		for _, p := range pkgs {
 			selectedPkgs[p] = true
 		}
 		list.Refresh()
 	})
-	btnSelNone := widget.NewButton("清空选择", func() {
+	btnSelNone := widget.NewButton(T("clear_selection"), func() {
 		selectedPkgs = map[string]bool{}
 		list.Refresh()
 	})
-	btnBatchUninst := widget.NewButton("批量卸载", func() {
-		doBatch("批量卸载", func(p string) (string, error) {
+	btnBatchUninst := widget.NewButton(T("batch_uninstall"), func() {
+		doBatch(T("batch_uninstall"), func(p string) (string, error) {
 			return mgr.Uninstall(mustGet(selectedSerialBind), selectedUserID, p)
 		}, true)
 	})
-	btnBatchClear := widget.NewButton("批量清除数据", func() {
-		doBatch("批量清除数据", func(p string) (string, error) {
+	btnBatchClear := widget.NewButton(T("batch_clear_data"), func() {
+		doBatch(T("batch_clear_data"), func(p string) (string, error) {
 			return mgr.ClearData(mustGet(selectedSerialBind), p)
 		}, false)
 	})
-	btnBatchForce := widget.NewButton("批量强行停止", func() {
-		doBatch("批量强行停止", func(p string) (string, error) {
+	btnBatchForce := widget.NewButton(T("batch_force_stop"), func() {
+		doBatch(T("batch_force_stop"), func(p string) (string, error) {
 			return mgr.ForceStop(mustGet(selectedSerialBind), p)
 		}, false)
 	})
-	btnBatchExtractApk := widget.NewButton("批量提取APK", func() {
-		doBatch("批量提取APK", func(p string) (string, error) {
+	btnBatchExtractApk := widget.NewButton(T("batch_extract_apk"), func() {
+		doBatch(T("batch_extract_apk"), func(p string) (string, error) {
 			return mgr.ExtractApk(mustGet(selectedSerialBind), p, p)
 		}, false)
 	})
-	btnBatchExtractAll := widget.NewButton("批量提取APK+数据", func() {
-		doBatch("批量提取APK+数据", func(p string) (string, error) {
+	btnBatchExtractAll := widget.NewButton(T("batch_extract_apk_data"), func() {
+		doBatch(T("batch_extract_apk_data"), func(p string) (string, error) {
 			out1, err1 := mgr.ExtractApk(mustGet(selectedSerialBind), p, p)
 			out2, err2 := mgr.ExtractAppData(mustGet(selectedSerialBind), p, p)
 			out := strings.TrimSpace(out1 + "\n" + out2)
@@ -812,9 +812,9 @@ func buildApplicationsTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind bi
 
 	topRow := container.NewHBox(
 		title,
-		widget.NewLabel(" User:"),
+		widget.NewLabel(" "+T("user")),
 		userSelect,
-		widget.NewLabel("  Type:"),
+		widget.NewLabel("  "+T("type")+":"),
 		appTypeSelect,
 		widget.NewLabel("  "),
 		pkgCount,
@@ -831,14 +831,14 @@ func buildApplicationsTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind bi
 func refreshApps(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding.String, outBind binding.StringList) {
 	serial, _ := selectedSerialBind.Get()
 	if strings.TrimSpace(serial) == "" {
-		dialog.ShowInformation("No device", "Please select a device.", w)
+		dialog.ShowInformation(T("no_device"), T("please_select_device"), w)
 		return
 	}
 	go func() {
 		pkgs, _, err := mgr.InstalledPackages(serial)
 		fyne.Do(func() {
 			if err != nil {
-				_ = outBind.Set([]string{"Error: " + err.Error()})
+				_ = outBind.Set([]string{T("error") + ": " + err.Error()})
 				return
 			}
 			if len(pkgs) == 0 {
@@ -856,7 +856,7 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 	files := []adb.FileEntry{}
 	selectedIndex := -1
 	selectedNames := map[string]bool{}
-	sortMode := "按照字母顺序排序"
+	sortMode := T("sort_alphabetical")
 	// For double-click detection
 	lastClickIdx := -1
 	lastClickAt := time.Time{}
@@ -888,23 +888,23 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 		}
 
 		switch mode {
-		case "按照字母顺序排序":
+		case T("sort_alphabetical"):
 			sort.SliceStable(files, func(i, j int) bool {
 				return strings.ToLower(files[i].Name) < strings.ToLower(files[j].Name)
 			})
-		case "按照字母倒序排序":
+		case T("sort_alphabetical_reverse"):
 			sort.SliceStable(files, func(i, j int) bool {
 				return strings.ToLower(files[i].Name) > strings.ToLower(files[j].Name)
 			})
-		case "按照文件大小从小到大排序":
+		case T("sort_size_small_to_large"):
 			sort.SliceStable(files, func(i, j int) bool {
 				return files[i].Size < files[j].Size
 			})
-		case "按照文件大小从大到小排序":
+		case T("sort_size_large_to_small"):
 			sort.SliceStable(files, func(i, j int) bool {
 				return files[i].Size > files[j].Size
 			})
-		case "按照修改时间从远到近排序":
+		case T("sort_time_old_to_new"):
 			sort.SliceStable(files, func(i, j int) bool {
 				ti := parseTime(files[i].ModTime)
 				tj := parseTime(files[j].ModTime)
@@ -919,7 +919,7 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 				}
 				return ti.Before(tj)
 			})
-		case "按照修改时间从近到远排序":
+		case T("sort_time_new_to_old"):
 			sort.SliceStable(files, func(i, j int) bool {
 				ti := parseTime(files[i].ModTime)
 				tj := parseTime(files[j].ModTime)
@@ -968,16 +968,13 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 
 			if label != nil {
 				label.text = f.Name
-				// 使用自适应颜色系统
+				// 使用改进的自适应颜色系统
 				if app := fyne.CurrentApp(); app != nil {
 					if settings := app.Settings(); settings != nil {
 						if currentTheme := settings.Theme(); currentTheme != nil {
-							// 检测当前主题变体
-							variant := theme.VariantLight // 默认浅色
-							bgColor := currentTheme.Color(theme.ColorNameBackground, theme.VariantLight)
-							if isDarkColor(bgColor) {
-								variant = theme.VariantDark
-							}
+							// 简化的主题检测：直接使用Fyne的内置检测
+							variant := app.Settings().ThemeVariant()
+
 							// 应用自适应颜色
 							label.color = getFileItemColor(f.IsDir, variant)
 						} else {
@@ -1043,7 +1040,49 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 	curPath := "/"
 	_ = curPathBind.Set(curPath)
 	pathEntry := widget.NewEntryWithData(curPathBind)
-	pathEntry.Disable()
+
+	// 共享的路径导航函数
+	navigateToPath := func(targetPath string) {
+		// 如果没有选中目录项，则处理路径输入框中的自定义路径
+		if targetPath == "" {
+			targetPath = strings.TrimSpace(pathEntry.Text)
+		}
+
+		if targetPath == "" {
+			dialog.ShowInformation(T("error"), T("please_enter_path"), w)
+			return
+		}
+
+		// 尝试切换到指定路径
+		go func() {
+			// 验证路径是否存在
+			serial, _ := selectedSerialBind.Get()
+			if serial == "" {
+				fyne.Do(func() {
+					dialog.ShowInformation(T("no_device"), T("please_select_device"), w)
+				})
+				return
+			}
+
+			// 尝试列出目录内容来验证路径是否存在
+			_, _, err := mgr.ListDir(serial, targetPath)
+			fyne.Do(func() {
+				if err != nil {
+					// 路径不存在或切换失败
+					dialog.ShowError(fmt.Errorf("%s: %v", T("path_not_found"), err), w)
+				} else {
+					// 路径存在，切换到该路径
+					loadDir(targetPath)
+				}
+			})
+		}()
+	}
+
+	// Make path entry editable for custom path input
+	pathEntry.OnSubmitted = func(path string) {
+		// Navigate to custom path when user presses Enter
+		navigateToPath(path)
+	}
 
 	refreshUsers := func() {
 		serial, _ := selectedSerialBind.Get()
@@ -1059,7 +1098,7 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 			usrs, _, err := mgr.Users(serial)
 			fyne.Do(func() {
 				if err != nil {
-					a := []string{"Error: " + err.Error()}
+					a := []string{T("error") + ": " + err.Error()}
 					_ = usersBind.Set(a)
 					userSelect.Options = a
 					userSelect.Refresh()
@@ -1082,7 +1121,7 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 	loadDir = func(p string) {
 		serial, _ := selectedSerialBind.Get()
 		if serial == "" {
-			dialog.ShowInformation("No device", "Please select a device.", w)
+			dialog.ShowInformation(T("no_device"), T("please_select_device"), w)
 			return
 		}
 		go func() {
@@ -1124,7 +1163,7 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 
 	userSelect.OnChanged = onUserChanged
 
-	btnUp := widget.NewButton("Up", func() {
+	btnUp := widget.NewButton(T("up"), func() {
 		p, _ := curPathBind.Get()
 		parent := path.Dir(p)
 		if parent == "." || parent == "/" {
@@ -1132,19 +1171,23 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 		}
 		loadDir(parent)
 	})
-	btnRefresh := widget.NewButton("Refresh", func() {
+	btnRefresh := widget.NewButton(T("refresh"), func() {
 		p, _ := curPathBind.Get()
 		loadDir(p)
 	})
-	btnOpen := widget.NewButton("Open", func() {
-		if selectedIndex < 0 || selectedIndex >= len(files) {
-			return
+	btnOpen := widget.NewButton(T("open"), func() {
+		// 优先处理选中的目录项
+		if selectedIndex >= 0 && selectedIndex < len(files) {
+			entry := files[selectedIndex]
+			if entry.IsDir {
+				p, _ := curPathBind.Get()
+				loadDir(path.Join(p, entry.Name))
+				return
+			}
 		}
-		entry := files[selectedIndex]
-		if entry.IsDir {
-			p, _ := curPathBind.Get()
-			loadDir(path.Join(p, entry.Name))
-		}
+
+		// 如果没有选中目录项，则使用共享的路径导航函数
+		navigateToPath("")
 	})
 
 	// React to device selection changes: reload users and default path
@@ -1154,12 +1197,12 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 
 	// Sorting and transfer controls
 	sortSelect := widget.NewSelect([]string{
-		"按照字母顺序排序",
-		"按照字母倒序排序",
-		"按照文件大小从小到大排序",
-		"按照文件大小从大到小排序",
-		"按照修改时间从远到近排序",
-		"按照修改时间从近到远排序",
+		T("sort_alphabetical"),
+		T("sort_alphabetical_reverse"),
+		T("sort_size_small_to_large"),
+		T("sort_size_large_to_small"),
+		T("sort_time_old_to_new"),
+		T("sort_time_new_to_old"),
 	}, func(s string) {
 		if s == "" {
 			return
@@ -1170,12 +1213,12 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 		}
 		filesList.Refresh()
 	})
-	sortSelect.SetSelected("按照字母顺序排序")
+	sortSelect.SetSelected(T("sort_alphabetical"))
 
-	btnUpload := widget.NewButton("Upload…", func() {
+	btnUpload := widget.NewButton(T("upload"), func() {
 		serial, _ := selectedSerialBind.Get()
 		if serial == "" {
-			dialog.ShowInformation("No device", "Please select a device.", w)
+			dialog.ShowInformation(T("no_device"), T("please_select_device"), w)
 			return
 		}
 		fd := dialog.NewFileOpen(func(rc fyne.URIReadCloser, err error) {
@@ -1189,7 +1232,7 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 			defer rc.Close()
 			lp := rc.URI().Path()
 			if strings.TrimSpace(lp) == "" {
-				dialog.ShowInformation("Upload", "无效的本地文件路径。", w)
+				dialog.ShowInformation(T("upload"), T("invalid_local_path"), w)
 				return
 			}
 			cur, _ := curPathBind.Get()
@@ -1197,9 +1240,9 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 				out, e := mgr.Push(serial, lp, cur)
 				fyne.Do(func() {
 					if e != nil {
-						dialog.ShowError(fmt.Errorf("upload failed: %v\n%s", e, out), w)
+						dialog.ShowError(fmt.Errorf("%s: %v\n%s", T("upload_failed"), e, out), w)
 					} else {
-						dialog.ShowInformation("Upload", "上传完成。", w)
+						dialog.ShowInformation(T("upload"), T("upload_complete"), w)
 						loadDir(cur)
 					}
 				})
@@ -1208,10 +1251,10 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 		fd.Show()
 	})
 
-	btnDownload := widget.NewButton("Download", func() {
+	btnDownload := widget.NewButton(T("download"), func() {
 		serial, _ := selectedSerialBind.Get()
 		if serial == "" {
-			dialog.ShowInformation("No device", "Please select a device.", w)
+			dialog.ShowInformation(T("no_device"), T("please_select_device"), w)
 			return
 		}
 		// collect selected names
@@ -1222,7 +1265,7 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 			}
 		}
 		if len(names) == 0 {
-			dialog.ShowInformation("Download", "请在文件列表勾选要下载的文件/目录。", w)
+			dialog.ShowInformation(T("download"), T("please_select_files"), w)
 			return
 		}
 		dd := dialog.NewFolderOpen(func(uri fyne.ListableURI, err error) {
@@ -1244,9 +1287,9 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 				out, e := mgr.PullMultiple(serial, remote, localDir, true)
 				fyne.Do(func() {
 					if e != nil {
-						dialog.ShowError(fmt.Errorf("download failed: %v\n%s", e, out), w)
+						dialog.ShowError(fmt.Errorf("%s: %v\n%s", T("download_failed"), e, out), w)
 					} else {
-						dialog.ShowInformation("Download", "下载完成。\n"+out, w)
+						dialog.ShowInformation(T("download"), T("download_complete")+"\n"+out, w)
 					}
 				})
 			}()
@@ -1255,21 +1298,21 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 	})
 
 	// Top controls
-	btnSelAllFiles := widget.NewButton("全选", func() {
+	btnSelAllFiles := widget.NewButton(T("select_all"), func() {
 		for _, f := range files {
 			selectedNames[f.Name] = true
 		}
 		filesList.Refresh()
 	})
-	btnSelNoneFiles := widget.NewButton("清空选择", func() {
+	btnSelNoneFiles := widget.NewButton(T("clear_selection"), func() {
 		selectedNames = map[string]bool{}
 		filesList.Refresh()
 	})
 	controls := container.NewHBox(userSelect, btnUp, btnRefresh, sortSelect, btnSelAllFiles, btnSelNoneFiles, btnUpload, btnDownload)
 	// Make path entry expand to full width; keep label at left and "Open" at right
-	pathRow := container.NewBorder(nil, nil, widget.NewLabel("Path:"), btnOpen, pathEntry)
+	pathRow := container.NewBorder(nil, nil, widget.NewLabel(T("path")), btnOpen, pathEntry)
 	top := container.NewVBox(
-		container.NewHBox(widget.NewLabel("User:"), controls),
+		container.NewHBox(widget.NewLabel(T("user")), controls),
 		pathRow,
 	)
 
@@ -1278,14 +1321,14 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 
 // Parameters tab: show getprop key/value
 func buildParametersTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding.String) fyne.CanvasObject {
-	return buildKeyValueTab(w, "Parameters", selectedSerialBind, func(serial string) (map[string]string, error) {
+	return buildKeyValueTab(w, T("parameters"), selectedSerialBind, func(serial string) (map[string]string, error) {
 		props, _, err := mgr.GetProps(serial)
 		return props, err
 	})
 }
 
 func buildGetVarTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding.String) fyne.CanvasObject {
-	return buildKeyValueTab(w, "GetVar", selectedSerialBind, func(serial string) (map[string]string, error) {
+	return buildKeyValueTab(w, T("getvar"), selectedSerialBind, func(serial string) (map[string]string, error) {
 		vars, _, err := mgr.GetVarAll(serial)
 		return vars, err
 	})
@@ -1320,7 +1363,7 @@ func buildKeyValueTab(w fyne.Window, title string, selectedSerialBind binding.St
 	doRefresh := func() {
 		serial, _ := selectedSerialBind.Get()
 		if serial == "" {
-			items = []string{"Select a device."}
+			items = []string{T("select_device")}
 			list.Refresh()
 			return
 		}
@@ -1328,7 +1371,7 @@ func buildKeyValueTab(w fyne.Window, title string, selectedSerialBind binding.St
 			data, err := fetcher(serial)
 			fyne.Do(func() {
 				if err != nil {
-					items = []string{"Error: " + err.Error()}
+					items = []string{T("error") + ": " + err.Error()}
 					list.Refresh()
 					return
 				}
@@ -1339,7 +1382,7 @@ func buildKeyValueTab(w fyne.Window, title string, selectedSerialBind binding.St
 				sort.Strings(lines)
 				items = lines
 				if len(items) == 0 {
-					items = []string{"No data returned."}
+					items = []string{T("no_data")}
 				}
 				selectedItems = make(map[string]bool)
 				list.Refresh()
@@ -1347,8 +1390,8 @@ func buildKeyValueTab(w fyne.Window, title string, selectedSerialBind binding.St
 		}()
 	}
 
-	refreshBtn := widget.NewButton("Refresh", doRefresh)
-	copyBtn := widget.NewButton("Copy Selected", func() {
+	refreshBtn := widget.NewButton(T("refresh"), doRefresh)
+	copyBtn := widget.NewButton(T("copy_selected"), func() {
 		var toCopy []string
 		for _, item := range items {
 			if selectedItems[item] {
@@ -1359,13 +1402,13 @@ func buildKeyValueTab(w fyne.Window, title string, selectedSerialBind binding.St
 			w.Clipboard().SetContent(strings.Join(toCopy, "\n"))
 		}
 	})
-	selectAllBtn := widget.NewButton("Select All", func() {
+	selectAllBtn := widget.NewButton(T("select_all"), func() {
 		for _, item := range items {
 			selectedItems[item] = true
 		}
 		list.Refresh()
 	})
-	deselectAllBtn := widget.NewButton("Deselect All", func() {
+	deselectAllBtn := widget.NewButton(T("deselect_all"), func() {
 		selectedItems = make(map[string]bool)
 		list.Refresh()
 	})
@@ -1381,26 +1424,26 @@ func buildKeyValueTab(w fyne.Window, title string, selectedSerialBind binding.St
 // Commands tab: basic device actions (reboot etc.)
 func buildCommandsTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding.String) fyne.CanvasObject {
 	// ADB Commands
-	btnReboot := widget.NewButton("Reboot", func() {
+	btnReboot := widget.NewButton(T("reboot"), func() {
 		go func() {
 			out, err := mgr.Reboot(mustGet(selectedSerialBind), "")
-			showCmdResult("Reboot", out, err, w)
+			showCmdResult(T("reboot"), out, err, w)
 		}()
 	})
-	btnRebootBootloader := widget.NewButton("Reboot to Bootloader", func() {
+	btnRebootBootloader := widget.NewButton(T("reboot_bootloader"), func() {
 		go func() {
 			out, err := mgr.Reboot(mustGet(selectedSerialBind), "bootloader")
-			showCmdResult("Reboot to Bootloader", out, err, w)
+			showCmdResult(T("reboot_bootloader"), out, err, w)
 		}()
 	})
-	btnRebootRecovery := widget.NewButton("Reboot to Recovery", func() {
+	btnRebootRecovery := widget.NewButton(T("reboot_recovery"), func() {
 		go func() {
 			out, err := mgr.Reboot(mustGet(selectedSerialBind), "recovery")
-			showCmdResult("Reboot to Recovery", out, err, w)
+			showCmdResult(T("reboot_recovery"), out, err, w)
 		}()
 	})
 	fileSideload := widget.NewLabel("")
-	btnSideload := widget.NewButton("Sideload ZIP...", func() {
+	btnSideload := widget.NewButton(T("sideload_zip"), func() {
 		dialog.ShowFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if err != nil || reader == nil {
 				return
@@ -1409,19 +1452,19 @@ func buildCommandsTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind bindin
 			fileSideload.SetText(path)
 			go func() {
 				out, err := mgr.Sideload(mustGet(selectedSerialBind), path)
-				showCmdResult("Sideload", out, err, w)
+				showCmdResult(T("sideload"), out, err, w)
 			}()
 		}, w)
 	})
-	btnStartShizuku := widget.NewButton("Start Shizuku", func() {
+	btnStartShizuku := widget.NewButton(T("start_shizuku"), func() {
 		go func() {
 			out, err := mgr.StartShizuku(mustGet(selectedSerialBind))
-			showCmdResult("Start Shizuku", out, err, w)
+			showCmdResult(T("start_shizuku"), out, err, w)
 		}()
 	})
 
 	return container.NewVBox(
-		widget.NewLabelWithStyle("ADB Commands", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		widget.NewLabelWithStyle(T("adb_commands"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		container.NewHBox(btnReboot, btnRebootBootloader, btnRebootRecovery),
 		container.NewHBox(btnSideload, fileSideload),
 		btnStartShizuku,
@@ -1430,42 +1473,42 @@ func buildCommandsTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind bindin
 
 func buildFastbootTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding.String) fyne.CanvasObject {
 	// Fastboot Commands
-	btnFbReboot := widget.NewButton("Reboot", func() {
+	btnFbReboot := widget.NewButton(T("reboot"), func() {
 		go func() {
 			out, err := mgr.ExecFastboot(mustGet(selectedSerialBind), "reboot")
-			showCmdResult("Fastboot Reboot", out, err, w)
+			showCmdResult(T("fastboot_reboot"), out, err, w)
 		}()
 	})
-	btnFbRebootBootloader := widget.NewButton("Reboot to Bootloader", func() {
+	btnFbRebootBootloader := widget.NewButton(T("reboot_bootloader"), func() {
 		go func() {
 			out, err := mgr.ExecFastboot(mustGet(selectedSerialBind), "reboot-bootloader")
-			showCmdResult("Fastboot Reboot to Bootloader", out, err, w)
+			showCmdResult(T("fastboot_reboot_bootloader"), out, err, w)
 		}()
 	})
-	btnFbContinue := widget.NewButton("Continue", func() {
+	btnFbContinue := widget.NewButton(T("continue"), func() {
 		go func() {
 			out, err := mgr.ExecFastboot(mustGet(selectedSerialBind), "continue")
-			showCmdResult("Fastboot Continue", out, err, w)
+			showCmdResult(T("fastboot_continue"), out, err, w)
 		}()
 	})
-	btnFbUnlock := widget.NewButton("OEM Unlock", func() {
+	btnFbUnlock := widget.NewButton(T("oem_unlock"), func() {
 		go func() {
 			out, err := mgr.ExecFastboot(mustGet(selectedSerialBind), "oem", "unlock")
-			showCmdResult("Fastboot OEM Unlock", out, err, w)
+			showCmdResult(T("fastboot_oem_unlock"), out, err, w)
 		}()
 	})
-	btnFbFlashingUnlock := widget.NewButton("Flashing Unlock", func() {
+	btnFbFlashingUnlock := widget.NewButton(T("flashing_unlock"), func() {
 		go func() {
 			out, err := mgr.ExecFastboot(mustGet(selectedSerialBind), "flashing", "unlock")
-			showCmdResult("Fastboot Flashing Unlock", out, err, w)
+			showCmdResult(T("fastboot_flashing_unlock"), out, err, w)
 		}()
 	})
 	fileFlash := widget.NewLabel("")
-	btnFbFlash := widget.NewButton("Flash Partition...", func() {
+	btnFbFlash := widget.NewButton(T("flash_partition"), func() {
 		partitionEntry := widget.NewEntry()
-		partitionEntry.PlaceHolder = "e.g., boot, recovery"
-		dialog.ShowForm("Flash Partition", "Flash", "Cancel", []*widget.FormItem{
-			widget.NewFormItem("Partition Name", partitionEntry),
+		partitionEntry.PlaceHolder = T("partition_placeholder")
+		dialog.ShowForm(T("flash_partition"), T("flash"), T("cancel"), []*widget.FormItem{
+			widget.NewFormItem(T("partition_name"), partitionEntry),
 		}, func(ok bool) {
 			if !ok {
 				return
@@ -1482,13 +1525,13 @@ func buildFastbootTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind bindin
 				fileFlash.SetText(fmt.Sprintf("%s: %s", partition, path))
 				go func() {
 					out, err := mgr.ExecFastboot(mustGet(selectedSerialBind), "flash", partition, path)
-					showCmdResult("Fastboot Flash", out, err, w)
+					showCmdResult(T("fastboot_flash"), out, err, w)
 				}()
 			}, w)
 		}, w)
 	})
 	fileUpdate := widget.NewLabel("")
-	btnFbUpdate := widget.NewButton("Update from ZIP...", func() {
+	btnFbUpdate := widget.NewButton(T("update_from_zip"), func() {
 		dialog.ShowFileOpen(func(reader fyne.URIReadCloser, err error) {
 			if err != nil || reader == nil {
 				return
@@ -1497,25 +1540,25 @@ func buildFastbootTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind bindin
 			fileUpdate.SetText(path)
 			go func() {
 				out, err := mgr.ExecFastboot(mustGet(selectedSerialBind), "update", path)
-				showCmdResult("Fastboot Update", out, err, w)
+				showCmdResult(T("fastboot_update"), out, err, w)
 			}()
 		}, w)
 	})
-	btnFbOemDeviceInfo := widget.NewButton("OEM Device Info", func() {
+	btnFbOemDeviceInfo := widget.NewButton(T("oem_device_info"), func() {
 		go func() {
 			out, err := mgr.ExecFastboot(mustGet(selectedSerialBind), "oem", "device-info")
-			showCmdResult("Fastboot OEM Device Info", out, err, w)
+			showCmdResult(T("fastboot_oem_device_info"), out, err, w)
 		}()
 	})
-	btnFbOemEdl := widget.NewButton("OEM EDL", func() {
+	btnFbOemEdl := widget.NewButton(T("oem_edl"), func() {
 		go func() {
 			out, err := mgr.ExecFastboot(mustGet(selectedSerialBind), "oem", "edl")
-			showCmdResult("Fastboot OEM EDL", out, err, w)
+			showCmdResult(T("fastboot_oem_edl"), out, err, w)
 		}()
 	})
 
 	return container.NewVBox(
-		widget.NewLabelWithStyle("Fastboot Commands", fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
+		widget.NewLabelWithStyle(T("fastboot_commands"), fyne.TextAlignLeading, fyne.TextStyle{Bold: true}),
 		container.NewHBox(btnFbReboot, btnFbRebootBootloader, btnFbContinue),
 		container.NewHBox(btnFbUnlock, btnFbFlashingUnlock),
 		container.NewHBox(btnFbFlash, fileFlash),
@@ -1531,7 +1574,7 @@ func showCmdResult(title, out string, err error, w fyne.Window) {
 			dialog.ShowError(err, w)
 			return
 		}
-		d := dialog.NewCustom(title, "OK", widget.NewLabel(out), w)
+		d := dialog.NewCustom(title, T("ok"), widget.NewLabel(out), w)
 		d.Resize(fyne.NewSize(600, 400))
 		d.Show()
 	})
@@ -1541,7 +1584,7 @@ func updateStatusDevices(statusBind binding.String, mgr *adb.Manager, count int)
 	go func() {
 		ver, _ := mgr.Version()
 		fyne.Do(func() {
-			_ = statusBind.Set(fmt.Sprintf("%s | Devices: %d", firstLine(ver), count))
+			_ = statusBind.Set(fmt.Sprintf("%s | %s: %d", firstLine(ver), T("devices"), count))
 		})
 	}()
 }
@@ -1554,32 +1597,32 @@ func openSettingsDialog(w fyne.Window, mgr *adb.Manager, cfg *config.Config) {
 		initial = mgr.Path
 	}
 	pathEntry.SetText(initial)
-	pathEntry.SetPlaceHolder("/path/to/adb or adb")
+	pathEntry.SetPlaceHolder(T("adb_path_placeholder"))
 
 	// Theme mode select (System/Light/Dark), default to System when empty
-	themeSelect := widget.NewSelect([]string{"System", "Light", "Dark"}, nil)
+	themeSelect := widget.NewSelect([]string{T("system"), T("light"), T("dark")}, nil)
 	curMode := strings.ToLower(strings.TrimSpace(cfg.ThemeMode))
 	if curMode == "" {
 		curMode = "system"
 	}
 	switch curMode {
 	case "light":
-		themeSelect.SetSelected("Light")
+		themeSelect.SetSelected(T("light"))
 	case "dark":
-		themeSelect.SetSelected("Dark")
+		themeSelect.SetSelected(T("dark"))
 	default:
-		themeSelect.SetSelected("System")
+		themeSelect.SetSelected(T("system"))
 	}
 
-	detectBtn := widget.NewButton("Detect", func() {
+	detectBtn := widget.NewButton(T("detect"), func() {
 		p := adb.AutoDetect()
 		if p == "" {
-			dialog.ShowInformation("Detect", "Could not auto-detect ADB. Please browse and select manually.", w)
+			dialog.ShowInformation(T("detect"), T("could_not_auto_detect_adb"), w)
 			return
 		}
 		pathEntry.SetText(p)
 	})
-	browseBtn := widget.NewButton("Browse…", func() {
+	browseBtn := widget.NewButton(T("browse"), func() {
 		fd := dialog.NewFileOpen(func(rc fyne.URIReadCloser, err error) {
 			if err != nil {
 				dialog.ShowError(err, w)
@@ -1591,14 +1634,14 @@ func openSettingsDialog(w fyne.Window, mgr *adb.Manager, cfg *config.Config) {
 			defer rc.Close()
 			p := rc.URI().Path()
 			if strings.TrimSpace(p) == "" {
-				dialog.ShowInformation("Select ADB", "Invalid selection.", w)
+				dialog.ShowInformation(T("select_adb"), T("invalid_selection"), w)
 				return
 			}
 			pathEntry.SetText(p)
 		}, w)
 		fd.Show()
 	})
-	saveBtn := widget.NewButton("Save", func() {
+	saveBtn := widget.NewButton(T("save"), func() {
 		p := strings.TrimSpace(pathEntry.Text)
 		valid, err := adb.ValidatePath(p)
 		if err != nil {
@@ -1608,9 +1651,9 @@ func openSettingsDialog(w fyne.Window, mgr *adb.Manager, cfg *config.Config) {
 		// Map theme selection to config value
 		mode := "system"
 		switch themeSelect.Selected {
-		case "Light":
+		case T("light"):
 			mode = "light"
-		case "Dark":
+		case T("dark"):
 			mode = "dark"
 		default:
 			mode = "system"
@@ -1625,16 +1668,16 @@ func openSettingsDialog(w fyne.Window, mgr *adb.Manager, cfg *config.Config) {
 		mgr.Path = valid
 
 		// Theme change requires restart
-		dialog.ShowInformation("Saved", "Settings saved. Please restart the application for the theme change to take effect.", w)
+		dialog.ShowInformation(T("saved"), T("settings_saved"), w)
 	})
 
 	form := widget.NewForm(
-		widget.NewFormItem("ADB Path", pathEntry),
-		widget.NewFormItem("Theme Mode", themeSelect),
+		widget.NewFormItem(T("adb_path"), pathEntry),
+		widget.NewFormItem(T("theme_mode"), themeSelect),
 	)
 	actions := container.NewHBox(detectBtn, browseBtn, saveBtn)
 	content := container.NewVBox(form, actions)
-	dialog.NewCustom("Settings", "Close", content, w).Show()
+	dialog.NewCustom(T("settings"), T("close"), content, w).Show()
 }
 
 func mustGetInt(b binding.Int) int {

@@ -11,6 +11,9 @@ import (
 )
 
 func main() {
+	// Initialize internationalization
+	ui.InitI18n()
+
 	// Load persisted config
 	cfg, err := config.Load()
 	if err != nil {
