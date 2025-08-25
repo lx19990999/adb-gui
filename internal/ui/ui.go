@@ -1614,6 +1614,21 @@ func openSettingsDialog(w fyne.Window, mgr *adb.Manager, cfg *config.Config) {
 		themeSelect.SetSelected(T("system"))
 	}
 
+	// Language select (Auto/Chinese/English)
+	languageSelect := widget.NewSelect([]string{T("auto"), T("chinese"), T("english")}, nil)
+	curLang := strings.ToLower(strings.TrimSpace(cfg.Language))
+	if curLang == "" {
+		curLang = "auto"
+	}
+	switch curLang {
+	case "zh":
+		languageSelect.SetSelected(T("chinese"))
+	case "en":
+		languageSelect.SetSelected(T("english"))
+	default:
+		languageSelect.SetSelected(T("auto"))
+	}
+
 	detectBtn := widget.NewButton(T("detect"), func() {
 		p := adb.AutoDetect()
 		if p == "" {
@@ -1659,8 +1674,20 @@ func openSettingsDialog(w fyne.Window, mgr *adb.Manager, cfg *config.Config) {
 			mode = "system"
 		}
 
+		// Map language selection to config value
+		lang := "auto"
+		switch languageSelect.Selected {
+		case T("chinese"):
+			lang = "zh"
+		case T("english"):
+			lang = "en"
+		default:
+			lang = "auto"
+		}
+
 		cfg.ADBPath = valid
 		cfg.ThemeMode = mode
+		cfg.Language = lang
 		if err := config.Save(cfg); err != nil {
 			dialog.ShowError(err, w)
 			return
@@ -1674,6 +1701,7 @@ func openSettingsDialog(w fyne.Window, mgr *adb.Manager, cfg *config.Config) {
 	form := widget.NewForm(
 		widget.NewFormItem(T("adb_path"), pathEntry),
 		widget.NewFormItem(T("theme_mode"), themeSelect),
+		widget.NewFormItem(T("language"), languageSelect),
 	)
 	actions := container.NewHBox(detectBtn, browseBtn, saveBtn)
 	content := container.NewVBox(form, actions)

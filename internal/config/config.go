@@ -14,6 +14,7 @@ type Config struct {
 	ADBPath    string `json:"adb_path"`
 	LastDevice string `json:"last_device,omitempty"`
 	ThemeMode  string `json:"theme_mode,omitempty"` // "system" (default), "light", "dark"
+	Language   string `json:"language,omitempty"`   // "zh" (Chinese), "en" (English), "auto" (auto-detect)
 }
 
 func configDir() (string, error) {

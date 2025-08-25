@@ -4,6 +4,8 @@ import (
 	"os"
 	"runtime"
 	"strings"
+
+	"adb-gui/internal/config"
 )
 
 // Language represents the supported languages
@@ -29,10 +31,36 @@ func NewI18n() *I18n {
 	// Initialize translations
 	i18n.initTranslations()
 
-	// Detect system language
-	i18n.language = i18n.detectSystemLanguage()
+	// Load language from config or detect system language
+	i18n.language = i18n.loadLanguageFromConfig()
 
 	return i18n
+}
+
+// loadLanguageFromConfig loads language setting from config file or falls back to system detection
+func (i *I18n) loadLanguageFromConfig() Language {
+	// Try to load config
+	cfg, err := config.Load()
+	if err != nil {
+		// If config loading fails, fall back to system detection
+		return i.detectSystemLanguage()
+	}
+
+	// Check if language is explicitly set in config
+	if cfg.Language != "" {
+		switch strings.ToLower(cfg.Language) {
+		case "zh", "chinese":
+			return Chinese
+		case "en", "english":
+			return English
+		case "auto":
+			// Auto-detect system language
+			return i.detectSystemLanguage()
+		}
+	}
+
+	// If no language setting in config, fall back to system detection
+	return i.detectSystemLanguage()
 }
 
 // detectSystemLanguage detects the system language across different operating systems
@@ -96,9 +124,32 @@ func (i *I18n) detectSystemLanguage() Language {
 	return English
 }
 
-// SetLanguage sets the current language
+// SetLanguage sets the current language and saves it to config
 func (i *I18n) SetLanguage(lang Language) {
 	i.language = lang
+
+	// Save language setting to config file
+	go func() {
+		cfg, err := config.Load()
+		if err != nil {
+			// If config loading fails, create a new one
+			cfg = &config.Config{}
+		}
+
+		// Set language value
+		switch lang {
+		case Chinese:
+			cfg.Language = "zh"
+		case English:
+			cfg.Language = "en"
+		}
+
+		// Save config
+		if err := config.Save(cfg); err != nil {
+			// Log error but don't fail the operation
+			// In a real app, you might want to show this error to the user
+		}
+	}()
 }
 
 // GetLanguage returns the current language
@@ -182,6 +233,9 @@ func (i *I18n) initTranslations() {
 		"system":                         "系统",
 		"light":                          "浅色",
 		"dark":                           "深色",
+		"auto":                           "自动",
+		"chinese":                        "中文",
+		"english":                        "英文",
 		"adb_not_found":                  "ADB未找到",
 		"adb_not_detected":               "ADB未检测到。请在设置中设置ADB路径或确保其在PATH中。",
 		"could_not_auto_detect_adb":      "无法自动检测ADB。请手动浏览并选择。",
@@ -239,6 +293,7 @@ func (i *I18n) initTranslations() {
 		"device_info":           "设备信息",
 		"adb_path":              "ADB 路径",
 		"theme_mode":            "主题模式",
+		"language":              "语言",
 		"partition_name":        "分区名称",
 		"partition_placeholder": "例如：boot, recovery",
 		"adb_path_placeholder":  "/path/to/adb 或 adb",
@@ -318,6 +373,9 @@ func (i *I18n) initTranslations() {
 		"system":                         "System",
 		"light":                          "Light",
 		"dark":                           "Dark",
+		"auto":                           "Auto",
+		"chinese":                        "Chinese",
+		"english":                        "English",
 		"adb_not_found":                  "ADB Not Found",
 		"adb_not_detected":               "ADB Not Detected. Please set the ADB path in settings or ensure it's in your PATH.",
 		"could_not_auto_detect_adb":      "ADB could not be automatically detected. Please browse manually and select.",
@@ -374,6 +432,7 @@ func (i *I18n) initTranslations() {
 		"device_info":           "Device Info",
 		"adb_path":              "ADB Path",
 		"theme_mode":            "Theme Mode",
+		"language":              "Language",
 		"partition_name":        "Partition Name",
 		"partition_placeholder": "e.g., boot, recovery",
 		"adb_path_placeholder":  "/path/to/adb or adb",
