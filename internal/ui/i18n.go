@@ -2,6 +2,7 @@ package ui
 
 import (
 	"os"
+	"runtime"
 	"strings"
 )
 
@@ -34,8 +35,9 @@ func NewI18n() *I18n {
 	return i18n
 }
 
-// detectSystemLanguage detects the system language
+// detectSystemLanguage detects the system language across different operating systems
 func (i *I18n) detectSystemLanguage() Language {
+	// 方法1: 检查环境变量 (Linux/macOS)
 	lang := os.Getenv("LANG")
 	if lang == "" {
 		lang = os.Getenv("LANGUAGE")
@@ -43,11 +45,54 @@ func (i *I18n) detectSystemLanguage() Language {
 	if lang == "" {
 		lang = os.Getenv("LC_ALL")
 	}
-
-	lang = strings.ToLower(lang)
-	if strings.Contains(lang, "zh") || strings.Contains(lang, "cn") {
-		return Chinese
+	if lang == "" {
+		lang = os.Getenv("LC_MESSAGES")
 	}
+
+	// 方法2: Windows特定检测
+	if lang == "" {
+		if runtime.GOOS == "windows" {
+			// Windows系统语言检测
+			if winLang := detectWindowsLanguage(); winLang != "" {
+				lang = winLang
+			}
+		}
+	}
+
+	// 方法3: macOS特定检测
+	if lang == "" {
+		if runtime.GOOS == "darwin" {
+			// macOS系统语言检测
+			if macLang := detectMacOSLanguage(); macLang != "" {
+				lang = macLang
+			}
+		}
+	}
+
+	// 方法4: Linux特定检测
+	if lang == "" {
+		if runtime.GOOS == "linux" {
+			// Linux系统语言检测
+			if linuxLang := detectLinuxLanguage(); linuxLang != "" {
+				lang = linuxLang
+			}
+		}
+	}
+
+	// 解析语言代码
+	lang = strings.ToLower(strings.TrimSpace(lang))
+	if lang != "" {
+		// 支持的语言代码
+		if strings.Contains(lang, "zh") || strings.Contains(lang, "cn") ||
+			strings.Contains(lang, "chinese") || strings.Contains(lang, "simplified") {
+			return Chinese
+		}
+		if strings.Contains(lang, "en") || strings.Contains(lang, "english") {
+			return English
+		}
+	}
+
+	// 默认返回英文
 	return English
 }
 
@@ -381,4 +426,72 @@ func GetLanguage() Language {
 		GlobalI18n = NewI18n()
 	}
 	return GlobalI18n.GetLanguage()
+}
+
+// detectWindowsLanguage detects system language on Windows
+func detectWindowsLanguage() string {
+	// 检查Windows系统语言环境变量
+	if lang := os.Getenv("LANG"); lang != "" {
+		return lang
+	}
+	if lang := os.Getenv("LANGUAGE"); lang != "" {
+		return lang
+	}
+
+	// 检查Windows特定的语言设置
+	if lang := os.Getenv("APPS_DEFAULT_THEME"); lang != "" {
+		return lang
+	}
+
+	// 检查Windows区域设置
+	if lang := os.Getenv("LOCALE"); lang != "" {
+		return lang
+	}
+
+	return ""
+}
+
+// detectMacOSLanguage detects system language on macOS
+func detectMacOSLanguage() string {
+	// 检查macOS特定的环境变量
+	if lang := os.Getenv("LANG"); lang != "" {
+		return lang
+	}
+	if lang := os.Getenv("LANGUAGE"); lang != "" {
+		return lang
+	}
+
+	// 检查macOS区域设置
+	if lang := os.Getenv("LC_ALL"); lang != "" {
+		return lang
+	}
+	if lang := os.Getenv("LC_MESSAGES"); lang != "" {
+		return lang
+	}
+
+	return ""
+}
+
+// detectLinuxLanguage detects system language on Linux
+func detectLinuxLanguage() string {
+	// 检查Linux环境变量
+	if lang := os.Getenv("LANG"); lang != "" {
+		return lang
+	}
+	if lang := os.Getenv("LANGUAGE"); lang != "" {
+		return lang
+	}
+	if lang := os.Getenv("LC_ALL"); lang != "" {
+		return lang
+	}
+	if lang := os.Getenv("LC_MESSAGES"); lang != "" {
+		return lang
+	}
+
+	// 检查Linux区域设置
+	if lang := os.Getenv("LC_CTYPE"); lang != "" {
+		return lang
+	}
+
+	return ""
 }
