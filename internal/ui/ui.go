@@ -1297,6 +1297,58 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 		dd.Show()
 	})
 
+	// Delete button for selected files/directories
+	btnDelete := widget.NewButton(T("delete"), func() {
+		serial, _ := selectedSerialBind.Get()
+		if serial == "" {
+			dialog.ShowInformation(T("no_device"), T("please_select_device"), w)
+			return
+		}
+		// collect selected names
+		var names []string
+		for _, f := range files {
+			if selectedNames[f.Name] {
+				names = append(names, f.Name)
+			}
+		}
+		if len(names) == 0 {
+			dialog.ShowInformation(T("delete"), T("please_select_files"), w)
+			return
+		}
+
+		// Show confirmation dialog
+		confirmDialog := dialog.NewConfirm(
+			T("confirm_delete"),
+			fmt.Sprintf(T("confirm_delete_message"), len(names)),
+			func(confirm bool) {
+				if confirm {
+					// Perform deletion
+					go func() {
+						cur, _ := curPathBind.Get()
+						// build remote paths
+						var remote []string
+						for _, n := range names {
+							remote = append(remote, path.Join(cur, n))
+						}
+
+						out, err := mgr.DeleteMultiple(serial, remote)
+						fyne.Do(func() {
+							if err != nil {
+								dialog.ShowError(fmt.Errorf("%s: %v\n%s", T("delete_failed"), err, out), w)
+							} else {
+								dialog.ShowInformation(T("delete"), T("delete_complete"), w)
+								// Refresh the file list
+								loadDir(cur)
+							}
+						})
+					}()
+				}
+			},
+			w,
+		)
+		confirmDialog.Show()
+	})
+
 	// Top controls
 	btnSelAllFiles := widget.NewButton(T("select_all"), func() {
 		for _, f := range files {
@@ -1308,7 +1360,7 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 		selectedNames = map[string]bool{}
 		filesList.Refresh()
 	})
-	controls := container.NewHBox(userSelect, btnUp, btnRefresh, sortSelect, btnSelAllFiles, btnSelNoneFiles, btnUpload, btnDownload)
+	controls := container.NewHBox(userSelect, btnUp, btnRefresh, sortSelect, btnSelAllFiles, btnSelNoneFiles, btnUpload, btnDownload, btnDelete)
 	// Make path entry expand to full width; keep label at left and "Open" at right
 	pathRow := container.NewBorder(nil, nil, widget.NewLabel(T("path")), btnOpen, pathEntry)
 	top := container.NewVBox(

@@ -872,3 +872,28 @@ func (m *Manager) ExtractAppData(serial, pkg, destDir string) (string, error) {
 	}
 	return "app data archived to " + tarPath, nil
 }
+
+// Delete deletes a remote file or directory.
+func (m *Manager) Delete(serial, remotePath string) (string, error) {
+	if strings.TrimSpace(remotePath) == "" {
+		return "", errors.New("invalid delete arguments")
+	}
+	return m.ExecSerial(serial, "shell", "rm", "-rf", remotePath)
+}
+
+// DeleteMultiple deletes multiple remote files or directories.
+func (m *Manager) DeleteMultiple(serial string, remotePaths []string) (string, error) {
+	if len(remotePaths) == 0 {
+		return "", errors.New("no files to delete")
+	}
+	var outs []string
+	var firstErr error
+	for _, rp := range remotePaths {
+		out, err := m.Delete(serial, rp)
+		outs = append(outs, out)
+		if err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return strings.Join(outs, "\n"), firstErr
+}
