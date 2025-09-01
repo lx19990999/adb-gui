@@ -290,11 +290,18 @@ func (m *Manager) ListDir(serial, path string) ([]FileEntry, string, error) {
 		path = "/"
 	}
 	// Try a detailed listing first to obtain metadata (toybox/busybox compatible).
-	// Fall back to simpler formats if flags are unsupported.
-	out, err := m.ExecSerial(serial, "shell", "ls", "-lAp", "--", path)
+	// Use -ll (long with nanoseconds) to get more precise time information.
+	out, err := m.ExecSerial(serial, "shell", "ls", "-llAp", "--", path)
+	if err != nil || strings.Contains(out, "Unknown option") || strings.Contains(out, "bad -") {
+		// Fallback to standard long format
+		out, err = m.ExecSerial(serial, "shell", "ls", "-lAp", "--", path)
+	}
 	if err != nil || strings.Contains(out, "Unknown option") || strings.Contains(out, "bad -") {
 		out, err = m.ExecSerial(serial, "shell", "ls", "-lA", "--", path)
 	}
+
+	// Debug: log the actual command output for troubleshooting (disabled)
+	// log.Printf("[DEBUG] ADB ls command output for path %s:\n%s", path, out)
 	if err != nil {
 		// Final fallback: names only
 		out, err2 := m.ExecSerial(serial, "shell", "ls", "-1p", "--", path)
@@ -314,8 +321,8 @@ func (m *Manager) ListDir(serial, path string) ([]FileEntry, string, error) {
 		return list, out, nil
 	}
 
-	// Parse ls -l style lines:
-	// perms links owner group size date/time name
+	// Parse ls -l style lines with better filename handling
+	// Format: perms links owner group size date time timezone filename
 	var list []FileEntry
 	for _, ln := range strings.Split(out, "\n") {
 		line := strings.TrimSpace(ln)
@@ -326,6 +333,9 @@ func (m *Manager) ListDir(serial, path string) ([]FileEntry, string, error) {
 		if strings.HasPrefix(line, "total ") {
 			continue
 		}
+
+		// Parse the line more carefully to handle filenames with spaces
+		// Look for the pattern: perms links owner group size date time timezone filename
 		fields := strings.Fields(line)
 		if len(fields) < 6 {
 			// Could not parse metadata, fallback to name-only detection
@@ -339,35 +349,86 @@ func (m *Manager) ListDir(serial, path string) ([]FileEntry, string, error) {
 			})
 			continue
 		}
+
 		mode := fields[0]
 		isDir := strings.HasPrefix(mode, "d")
 
-		// Heuristic: pick the largest numeric index as size (toybox layout makes size at index 4).
-		sizeIdx := -1
-		for i := 1; i < len(fields); i++ {
-			if _, e := strconv.ParseInt(fields[i], 10, 64); e == nil {
-				sizeIdx = i
+		// Parse file size: for ls -llAp format, size is at index 4
+		// Format: perms links owner group size date time timezone filename
+		var size int64
+		if len(fields) >= 5 {
+			if sizeStr, err := strconv.ParseInt(fields[4], 10, 64); err == nil {
+				size = sizeStr
+			} else {
+				// log.Printf("[DEBUG] Failed to parse size '%s': %v", fields[4], err)
 			}
 		}
-		var size int64
-		if sizeIdx >= 0 {
-			size, _ = strconv.ParseInt(fields[sizeIdx], 10, 64)
+
+		// Find filename: it's everything after the timezone field
+		// Look for timezone pattern (+0800, -0500, etc.) and take everything after it
+		var name string
+		timezoneIdx := -1
+		for i := len(fields) - 1; i >= 0; i-- {
+			field := fields[i]
+			if strings.HasPrefix(field, "+") || strings.HasPrefix(field, "-") {
+				// Found timezone field
+				timezoneIdx = i
+				break
+			}
 		}
 
-		// Name is usually the last field
-		nameField := fields[len(fields)-1]
-		name := strings.TrimSuffix(nameField, "/")
+		if timezoneIdx >= 0 && timezoneIdx < len(fields)-1 {
+			// Filename is everything after timezone
+			nameParts := fields[timezoneIdx+1:]
+			name = strings.Join(nameParts, " ")
+		} else {
+			// No timezone found, use last field as filename
+			name = fields[len(fields)-1]
+		}
+
+		// log.Printf("[DEBUG] Filename parsing: timezoneIdx=%d, name='%s'", timezoneIdx, name)
+
+		name = strings.TrimSuffix(name, "/")
 		if name == "" || name == "." || name == ".." {
 			continue
 		}
 
-		// Best-effort ModTime: join last two tokens before name if present
+		// Best-effort ModTime: parse time fields more carefully
+		// Format: "2025-08-28 10:28:58.386407040 +0800"
 		modTime := ""
+
+		// Debug: log fields for troubleshooting (disabled)
+		// log.Printf("[DEBUG] Fields for line '%s': %v (len=%d)", line, fields, len(fields))
+
 		if len(fields) >= 8 {
-			modTime = fields[len(fields)-3] + " " + fields[len(fields)-2]
+			// For ls -llAp format: perms links owner group size date time timezone filename
+			// Example: [drwxrws--- 2 u0_a448 media_rw 3452 2024-11-26 22:10:16.668999988 +0800 .RedmagicKyi/]
+			// Index:    0          1 2      3        4     5          6                   7     8
+			dateField := fields[5]     // 2024-11-26
+			timeField := fields[6]     // 22:10:16.668999988
+			timezoneField := fields[7] // +0800
+
+			// log.Printf("[DEBUG] Time fields: date='%s', time='%s', timezone='%s'", dateField, timeField, timezoneField)
+
+			// Validate that these are indeed date/time/timezone fields
+			if strings.Contains(dateField, "-") && strings.Contains(timeField, ":") &&
+				(strings.HasPrefix(timezoneField, "+") || strings.HasPrefix(timezoneField, "-")) {
+				// Full format with timezone: "2025-08-28 10:28:58.386407040 +0800"
+				modTime = dateField + " " + timeField + " " + timezoneField
+				// log.Printf("[DEBUG] Parsed modTime: '%s'", modTime)
+			} else {
+				// log.Printf("[DEBUG] Time field validation failed: date='%s', time='%s', timezone='%s'", dateField, timeField, timezoneField)
+			}
 		} else if len(fields) >= 7 {
-			modTime = fields[len(fields)-2]
+			// Fallback for simpler formats
+			timeField := fields[len(fields)-2]
+			if strings.Contains(timeField, ":") || strings.Contains(timeField, "-") {
+				modTime = timeField
+			}
 		}
+
+		// Debug: log parsed file entry (disabled)
+		// log.Printf("[DEBUG] Parsed file: name='%s', isDir=%v, size=%d, modTime='%s'", name, isDir, size, modTime)
 
 		list = append(list, FileEntry{
 			Name:    name,

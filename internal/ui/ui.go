@@ -22,6 +22,98 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
+// formatFileSize formats file size in human-readable format
+func formatFileSize(size int64) string {
+	if size < 1024 {
+		return fmt.Sprintf("%d B", size)
+	} else if size < 1024*1024 {
+		return fmt.Sprintf("%.1f KB", float64(size)/1024)
+	} else if size < 1024*1024*1024 {
+		return fmt.Sprintf("%.1f MB", float64(size)/(1024*1024))
+	} else {
+		return fmt.Sprintf("%.1f GB", float64(size)/(1024*1024*1024))
+	}
+}
+
+// formatModTime formats modification time to YYYY-MM-DD HH:MM:SS format
+func formatModTime(modTime string) string {
+	if modTime == "" {
+		return "--"
+	}
+
+	// 清理时间字符串，移除额外的描述文字
+	cleanTime := strings.TrimSpace(modTime)
+
+	// 检查是否是纯数字（可能是时间戳或异常数据）
+	if isNumeric(cleanTime) {
+		// 尝试解析为Unix时间戳
+		if timestamp, err := strconv.ParseInt(cleanTime, 10, 64); err == nil {
+			// 检查是否是合理的Unix时间戳（1970年到2100年之间）
+			if timestamp > 0 && timestamp < 4102444800 { // 2100-01-01 00:00:00
+				t := time.Unix(timestamp, 0)
+				return t.Format("2006-01-02 15:04:05")
+			}
+		}
+		// 如果无法解析为时间戳，显示为未知格式
+		return "未知格式"
+	}
+
+	// 检查是否包含文件大小信息（这是错误的）
+	if strings.Contains(cleanTime, "B") || strings.Contains(cleanTime, "KB") ||
+		strings.Contains(cleanTime, "MB") || strings.Contains(cleanTime, "GB") {
+		return "数据错误"
+	}
+
+	// 尝试解析各种时间格式，保持完整的时间字符串
+	timeFormats := []string{
+		"2006-01-02 15:04:05.000000000 -0700", // ls -llAp 完整格式（带纳秒和时区）
+		"2006-01-02 15:04:05.000000000 +0700", // ls -llAp 完整格式（带纳秒和时区）
+		"2006-01-02T15:04:05.000000000-07:00", // ISO 8601 完整格式
+		"2006-01-02T15:04:05-07:00",           // ISO 8601 标准格式
+		"2006-01-02T15:04:05",                 // ISO 8601 本地时间
+		"2006-01-02 15:04:05.000000000",       // 带微秒的完整格式
+		"2006-01-02 15:04:05",                 // 标准完整格式
+		"2006-01-02 15:04",                    // 年-月-日 时:分（这是ls -l的常见格式）
+		"2006-01-02",                          // 只有日期
+		"15:04:05",                            // 只有时间
+		"15:04",                               // 只有时分
+		"Jan 02 15:04",                        // 英文月份格式
+		"Jan 02 2006",                         // 英文月份年份格式
+		"Jan 02 15:04:05",                     // 英文月份完整格式
+	}
+
+	for _, format := range timeFormats {
+		if t, err := time.Parse(format, cleanTime); err == nil {
+			// 如果是只有时间或只有日期的格式，使用当前年份
+			if format == "15:04:05" || format == "15:04" {
+				now := time.Now()
+				t = time.Date(now.Year(), now.Month(), now.Day(), t.Hour(), t.Minute(), t.Second(), 0, now.Location())
+			} else if format == "Jan 02 15:04" || format == "Jan 02 15:04:05" {
+				// 英文月份格式，使用当前年份
+				now := time.Now()
+				t = time.Date(now.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), 0, now.Location())
+			}
+			return t.Format("2006-01-02 15:04:05")
+		}
+	}
+
+	// 如果无法解析，显示原始值用于调试
+	return "解析失败: " + cleanTime
+}
+
+// isNumeric checks if a string contains only digits
+func isNumeric(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 // coloredLabel is a custom widget for displaying colored text
 type coloredLabel struct {
 	widget.BaseWidget
@@ -867,31 +959,45 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 	// Apply sorting according to current sortMode
 	applySort = func() {
 		mode := sortMode
+		// fmt.Printf("[DEBUG] Applying sort mode: %s, files count: %d\n", mode, len(files))
 
 		// Best-effort parse of ModTime captured from ls -l (varies by ROM)
 		parseTime := func(s string) time.Time {
 			layouts := []string{
-				"2006-01-02 15:04",
-				"2006-01-02 15:04:05",
-				"2006-01-02",
-				"Jan _2 15:04",
-				"Jan _2 2006",
-				time.RFC3339,
-				time.ANSIC,
+				"2006-01-02 15:04:05.000000000 -0700", // ls -llAp format with nanoseconds and timezone
+				"2006-01-02 15:04:05 -0700",           // ls -llAp format without nanoseconds
+				"2006-01-02 15:04:05.000000000",       // ls -llAp format with nanoseconds, no timezone
+				"2006-01-02 15:04:05",                 // Standard format
+				"2006-01-02 15:04",                    // Without seconds
+				"2006-01-02",                          // Date only
+				"Jan _2 15:04",                        // Month format
+				"Jan _2 2006",                         // Month with year
+				time.RFC3339,                          // ISO 8601
+				time.ANSIC,                            // ANSI C format
 			}
 			for _, l := range layouts {
 				if t, err := time.Parse(l, strings.TrimSpace(s)); err == nil {
 					return t
 				}
 			}
+			fmt.Printf("[DEBUG] Failed to parse time: '%s'\n", s)
 			return time.Time{}
 		}
 
 		switch mode {
 		case T("sort_alphabetical"):
+			fmt.Printf("[DEBUG] Sorting alphabetically, files count: %d\n", len(files))
+			// Log first 10 files before sorting
+			for i := 0; i < len(files) && i < 10; i++ {
+				fmt.Printf("[DEBUG] Before[%d]: %s\n", i, files[i].Name)
+			}
 			sort.SliceStable(files, func(i, j int) bool {
 				return strings.ToLower(files[i].Name) < strings.ToLower(files[j].Name)
 			})
+			// Log first 10 files after sorting
+			for i := 0; i < len(files) && i < 10; i++ {
+				fmt.Printf("[DEBUG] After[%d]: %s\n", i, files[i].Name)
+			}
 		case T("sort_alphabetical_reverse"):
 			sort.SliceStable(files, func(i, j int) bool {
 				return strings.ToLower(files[i].Name) > strings.ToLower(files[j].Name)
@@ -920,6 +1026,12 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 				return ti.Before(tj)
 			})
 		case T("sort_time_new_to_old"):
+			fmt.Printf("[DEBUG] Sorting by time new to old, files count: %d\n", len(files))
+			// Log all files before sorting
+			fmt.Printf("[DEBUG] === BEFORE SORT (Time New to Old) ===\n")
+			for i := 0; i < len(files); i++ {
+				fmt.Printf("[DEBUG] [%d] %s | %d bytes | %s\n", i, files[i].Name, files[i].Size, files[i].ModTime)
+			}
 			sort.SliceStable(files, func(i, j int) bool {
 				ti := parseTime(files[i].ModTime)
 				tj := parseTime(files[j].ModTime)
@@ -934,102 +1046,129 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 				}
 				return ti.After(tj)
 			})
+			// Log all files after sorting
+			fmt.Printf("[DEBUG] === AFTER SORT (Time New to Old) ===\n")
+			for i := 0; i < len(files); i++ {
+				fmt.Printf("[DEBUG] [%d] %s | %d bytes | %s\n", i, files[i].Name, files[i].Size, files[i].ModTime)
+			}
 		default:
 			sort.SliceStable(files, func(i, j int) bool {
 				return strings.ToLower(files[i].Name) < strings.ToLower(files[j].Name)
 			})
 		}
 	}
-	filesList := widget.NewList(
-		func() int { return len(files) },
+	// 定义列宽（可拖动调整）
+	columnWidths := []float32{50, 300, 120, 200} // 复选框、文件名、大小、时间
+
+	filesList := widget.NewTable(
+		func() (int, int) { return len(files), 4 }, // 行数、列数
 		func() fyne.CanvasObject {
-			chk := widget.NewCheck("", nil)
-			// 使用自适应颜色，不再硬编码白色
-			label := newColoredLabel("file", color.Black) // 默认颜色，会在更新时动态调整
-			return container.NewBorder(nil, nil, chk, nil, label)
+			// 每列返回对应的组件类型
+			return widget.NewLabel("")
 		},
-		func(i widget.ListItemID, o fyne.CanvasObject) {
-			if i < 0 || i >= len(files) {
+		func(i widget.TableCellID, o fyne.CanvasObject) {
+			if i.Row < 0 || i.Row >= len(files) {
 				return
 			}
-			f := files[i]
-			box := o.(*fyne.Container)
+			f := files[i.Row]
+			label := o.(*widget.Label)
 
-			var chk *widget.Check
-			var label *coloredLabel
-			for _, obj := range box.Objects {
-				if c, ok := obj.(*widget.Check); ok {
-					chk = c
+			// 根据列索引设置不同的内容
+			switch i.Col {
+			case 0: // 复选框列 - 显示复选框
+				// 显示复选框状态
+				if selectedNames[f.Name] {
+					label.SetText("☑")
+				} else {
+					label.SetText("☐")
 				}
-				if l, ok := obj.(*coloredLabel); ok {
-					label = l
+				// 重置所有样式属性，确保不继承其他列的颜色
+				label.TextStyle = fyne.TextStyle{}
+				label.Importance = widget.MediumImportance
+				// 强制刷新样式
+				label.Refresh()
+
+			case 1: // 文件名列 - 显示带颜色的文件名
+				label.SetText(f.Name)
+				// 设置颜色和样式
+				expectedStyle := fyne.TextStyle{}
+				if f.IsDir {
+					expectedStyle = fyne.TextStyle{Bold: true}
 				}
-			}
-
-			if label != nil {
-				label.text = f.Name
-				// 使用改进的自适应颜色系统
-				if app := fyne.CurrentApp(); app != nil {
-					if settings := app.Settings(); settings != nil {
-						if currentTheme := settings.Theme(); currentTheme != nil {
-							// 简化的主题检测：直接使用Fyne的内置检测
-							variant := app.Settings().ThemeVariant()
-
-							// 应用自适应颜色
-							label.color = getFileItemColor(f.IsDir, variant)
-						} else {
-							// 回退到传统颜色
-							if f.IsDir {
-								label.color = color.NRGBA{B: 255, A: 255}
-							} else {
-								label.color = color.Black
-							}
-						}
+				if label.TextStyle != expectedStyle {
+					label.TextStyle = expectedStyle
+				}
+				// 设置文件/目录颜色 - 根据主题自适应
+				currentTheme := fyne.CurrentApp().Settings().ThemeVariant()
+				if f.IsDir {
+					// 目录：在深色主题下使用高重要性（蓝色），浅色主题下使用警告重要性（橙色）
+					if currentTheme == theme.VariantDark {
+						label.Importance = widget.HighImportance // 深色主题：蓝色
 					} else {
-						// 回退到传统颜色
-						if f.IsDir {
-							label.color = color.NRGBA{B: 255, A: 255}
-						} else {
-							label.color = color.Black
-						}
+						label.Importance = widget.WarningImportance // 浅色主题：橙色
 					}
 				} else {
-					// 回退到传统颜色
-					if f.IsDir {
-						label.color = color.NRGBA{B: 255, A: 255}
-					} else {
-						label.color = color.Black
-					}
+					// 文件：使用标准重要性
+					label.Importance = widget.MediumImportance
 				}
+
+			case 2: // 文件大小列 - 显示文件大小
+				if f.IsDir {
+					label.SetText("--")
+				} else {
+					label.SetText(formatFileSize(f.Size))
+				}
+				// 重置所有样式属性，确保不继承其他列的颜色
+				label.TextStyle = fyne.TextStyle{}
+				label.Importance = widget.MediumImportance
+				// 强制刷新样式
 				label.Refresh()
-			}
-			if chk != nil {
-				nameCopy := f.Name
-				cur := selectedNames[nameCopy]
-				chk.SetChecked(cur)
-				chk.Refresh()
-				chk.OnChanged = func(v bool) {
-					if v {
-						selectedNames[nameCopy] = true
-					} else {
-						delete(selectedNames, nameCopy)
-					}
-				}
+
+			case 3: // 修改时间列 - 显示修改时间
+				// 使用新的时间格式化函数
+				formattedTime := formatModTime(f.ModTime)
+				label.SetText(formattedTime)
+				// 重置所有样式属性，确保不继承其他列的颜色
+				label.TextStyle = fyne.TextStyle{}
+				label.Importance = widget.MediumImportance
+				// 强制刷新样式
+				label.Refresh()
 			}
 		},
 	)
-	filesList.OnSelected = func(id widget.ListItemID) {
+
+	// 设置列宽
+	filesList.SetColumnWidth(0, columnWidths[0]) // 复选框列
+	filesList.SetColumnWidth(1, columnWidths[1]) // 文件名列
+	filesList.SetColumnWidth(2, columnWidths[2]) // 大小列
+	filesList.SetColumnWidth(3, columnWidths[3]) // 时间列
+
+	filesList.OnSelected = func(id widget.TableCellID) {
+		// 处理复选框点击
+		if id.Col == 0 && id.Row >= 0 && id.Row < len(files) {
+			f := files[id.Row]
+			// 切换选择状态
+			if selectedNames[f.Name] {
+				delete(selectedNames, f.Name)
+			} else {
+				selectedNames[f.Name] = true
+			}
+			// 只刷新复选框列，避免整个表格刷新
+			filesList.Refresh()
+			return
+		}
+
 		// Detect double-click within 500ms on same item to open directory.
 		now := time.Now()
-		if int(id) == lastClickIdx && now.Sub(lastClickAt) <= 500*time.Millisecond {
-			if int(id) >= 0 && int(id) < len(files) && files[int(id)].IsDir && loadDir != nil && curPathBind != nil {
+		if id.Row == lastClickIdx && now.Sub(lastClickAt) <= 500*time.Millisecond {
+			if id.Row >= 0 && id.Row < len(files) && files[id.Row].IsDir && loadDir != nil && curPathBind != nil {
 				p, _ := curPathBind.Get()
-				loadDir(path.Join(p, files[int(id)].Name))
+				loadDir(path.Join(p, files[id.Row].Name))
 			}
 		}
 		// Update click tracking and always unselect to allow repeated selection events
-		selectedIndex = int(id)
-		lastClickIdx = int(id)
+		selectedIndex = id.Row
+		lastClickIdx = id.Row
 		lastClickAt = now
 		filesList.Unselect(id)
 	}
@@ -1136,6 +1275,7 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 				if applySort != nil {
 					applySort()
 				}
+				// Note: Default sort selection is handled in the sortSelect creation
 				// Reset selection on directory load
 				selectedIndex = -1
 				selectedNames = map[string]bool{}
@@ -1207,13 +1347,24 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 		if s == "" {
 			return
 		}
+		fmt.Printf("[DEBUG] Sort selection callback: %s, files count: %d\n", s, len(files))
+		if len(files) == 0 {
+			fmt.Printf("[DEBUG] No files to sort, skipping sort operation\n")
+			return
+		}
 		sortMode = s
 		if applySort != nil {
 			applySort()
 		}
+		if len(files) >= 3 {
+			fmt.Printf("[DEBUG] After sort in callback, first 3 files: %s, %s, %s\n",
+				files[0].Name, files[1].Name, files[2].Name)
+		}
+		// Force complete table refresh
 		filesList.Refresh()
 	})
-	sortSelect.SetSelected(T("sort_alphabetical"))
+	// Note: Don't set initial selection here to avoid triggering callback before files are loaded
+	// Initial sorting is applied in loadDir function after files are loaded
 
 	btnUpload := widget.NewButton(T("upload"), func() {
 		serial, _ := selectedSerialBind.Get()
@@ -1363,9 +1514,42 @@ func buildStorageTab(w fyne.Window, mgr *adb.Manager, selectedSerialBind binding
 	controls := container.NewHBox(userSelect, btnUp, btnRefresh, sortSelect, btnSelAllFiles, btnSelNoneFiles, btnUpload, btnDownload, btnDelete)
 	// Make path entry expand to full width; keep label at left and "Open" at right
 	pathRow := container.NewBorder(nil, nil, widget.NewLabel(T("path")), btnOpen, pathEntry)
+	// Add column headers for file list with proper alignment
+	// 使用固定宽度的容器来确保表头与表格列对齐
+	checkboxHeaderContainer := container.NewWithoutLayout()
+	nameHeaderContainer := container.NewWithoutLayout()
+	sizeHeaderContainer := container.NewWithoutLayout()
+	timeHeaderContainer := container.NewWithoutLayout()
+
+	// 创建表头标签
+	checkboxHeader := widget.NewLabel("")
+	nameHeader := widget.NewLabel(T("file_name"))
+	sizeHeader := widget.NewLabel(T("file_size"))
+	timeHeader := widget.NewLabel(T("file_time"))
+
+	// 将标签添加到对应的容器中
+	checkboxHeaderContainer.Add(checkboxHeader)
+	nameHeaderContainer.Add(nameHeader)
+	sizeHeaderContainer.Add(sizeHeader)
+	timeHeaderContainer.Add(timeHeader)
+
+	// 设置表头容器的固定宽度，与表格列宽匹配
+	checkboxHeaderContainer.Resize(fyne.NewSize(columnWidths[0], 25))
+	nameHeaderContainer.Resize(fyne.NewSize(columnWidths[1], 25))
+	sizeHeaderContainer.Resize(fyne.NewSize(columnWidths[2], 25))
+	timeHeaderContainer.Resize(fyne.NewSize(columnWidths[3], 25))
+
+	columnHeaders := container.NewHBox(
+		checkboxHeaderContainer,
+		nameHeaderContainer,
+		sizeHeaderContainer,
+		timeHeaderContainer,
+	)
+
 	top := container.NewVBox(
 		container.NewHBox(widget.NewLabel(T("user")), controls),
 		pathRow,
+		columnHeaders,
 	)
 
 	return container.NewBorder(top, nil, nil, nil, filesList)
